@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastAPI Mail Application</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-slide-in {
+            animation: slideIn 0.4s ease-out;
+        }
+        .delay-100 { animation-delay: 0.1s; }
+        .delay-200 { animation-delay: 0.2s; }
+        .delay-300 { animation-delay: 0.3s; }
+        .delay-400 { animation-delay: 0.4s; }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50 flex items-center justify-center p-4 sm:p-6">
+    <div class="max-w-4xl w-full space-y-4 sm:space-y-6">
+        
+        <!-- 顶部状态栏 -->
+        <div class="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-200 animate-slide-in">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div class="flex items-center gap-3 sm:gap-4">
+                    <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/30">
+                        <i data-lucide="zap" class="w-6 h-6 sm:w-7 sm:h-7 text-white" stroke-width="2.5"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl sm:text-2xl font-bold text-gray-900">FastAPI Mail Service</h1>
+                        <p class="text-xs sm:text-sm text-gray-500">邮件服务后端 API</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 px-3 sm:px-4 py-2 bg-green-50 rounded-full border border-green-200 w-fit">
+                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span class="text-xs sm:text-sm font-medium text-green-700">运行中</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 服务信息网格 -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div class="bg-white rounded-xl p-4 sm:p-5 border border-gray-200 animate-slide-in delay-100 hover:shadow-md transition-shadow">
+                <div class="flex items-center gap-2 text-gray-500 text-xs sm:text-sm mb-2">
+                    <i data-lucide="package" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+                    <span>版本</span>
+                </div>
+                <div class="text-xl sm:text-2xl font-bold text-gray-900">{{VERSION}}</div>
+            </div>
+            <div class="bg-white rounded-xl p-4 sm:p-5 border border-gray-200 animate-slide-in delay-200 hover:shadow-md transition-shadow">
+                <div class="flex items-center gap-2 text-gray-500 text-xs sm:text-sm mb-2">
+                    <i data-lucide="globe" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+                    <span>环境</span>
+                </div>
+                <div class="text-xl sm:text-2xl font-bold text-gray-900">{{ENVIRONMENT}}</div>
+            </div>
+            <div class="bg-white rounded-xl p-4 sm:p-5 border border-gray-200 animate-slide-in delay-300 hover:shadow-md transition-shadow">
+                <div class="flex items-center gap-2 text-gray-500 text-xs sm:text-sm mb-2">
+                    <i data-lucide="server" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+                    <span>端口</span>
+                </div>
+                <div class="text-xl sm:text-2xl font-bold text-gray-900">{{PORT}}</div>
+            </div>
+            <div class="bg-white rounded-xl p-4 sm:p-5 border border-gray-200 animate-slide-in delay-400 hover:shadow-md transition-shadow">
+                <div class="flex items-center gap-2 text-gray-500 text-xs sm:text-sm mb-2">
+                    <i data-lucide="clock" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+                    <span>运行时间</span>
+                </div>
+                <div class="text-xl sm:text-2xl font-bold text-gray-900" id="uptime">0s</div>
+            </div>
+        </div>
+
+        <!-- API 快速访问 -->
+        <div class="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-200 animate-slide-in delay-400">
+            <div class="flex items-center gap-2 mb-4">
+                <i data-lucide="layout-grid" class="w-5 h-5 text-gray-700"></i>
+                <h2 class="text-base sm:text-lg font-semibold text-gray-900">快速访问</h2>
+            </div>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <a href="/docs" class="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 bg-gray-50 hover:bg-blue-50 rounded-xl border border-gray-200 hover:border-blue-300 transition-all group">
+                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors flex-shrink-0">
+                        <i data-lucide="book-open" class="w-5 h-5 text-blue-600"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-gray-900 text-sm sm:text-base">Swagger UI</div>
+                        <div class="text-xs sm:text-sm text-gray-500 truncate">交互式 API 文档</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors hidden sm:block flex-shrink-0"></i>
+                </a>
+                
+                <a href="/redoc" class="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 bg-gray-50 hover:bg-purple-50 rounded-xl border border-gray-200 hover:border-purple-300 transition-all group">
+                    <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors flex-shrink-0">
+                        <i data-lucide="file-text" class="w-5 h-5 text-purple-600"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-gray-900 text-sm sm:text-base">ReDoc</div>
+                        <div class="text-xs sm:text-sm text-gray-500 truncate">详细 API 参考</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-400 group-hover:text-purple-500 transition-colors hidden sm:block flex-shrink-0"></i>
+                </a>
+                
+                <a href="/api/gmail/status" class="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 bg-gray-50 hover:bg-green-50 rounded-xl border border-gray-200 hover:border-green-300 transition-all group sm:col-span-2 lg:col-span-1">
+                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors flex-shrink-0">
+                        <i data-lucide="mail" class="w-5 h-5 text-green-600"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-gray-900 text-sm sm:text-base">Gmail 服务</div>
+                        <div class="text-xs sm:text-sm text-gray-500 truncate">查看服务状态</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-400 group-hover:text-green-500 transition-colors hidden sm:block flex-shrink-0"></i>
+                </a>
+            </div>
+        </div>
+
+        <!-- 页脚 -->
+        <div class="text-center text-xs sm:text-sm text-gray-400 animate-slide-in delay-400 pb-2">
+            <p class="flex items-center justify-center gap-2 flex-wrap">
+                <span>Powered by</span>
+                <span class="inline-flex items-center gap-1">
+                    <i data-lucide="zap" class="w-3 h-3"></i>
+                    FastAPI
+                </span>
+                <span>•</span>
+                <span class="inline-flex items-center gap-1">
+                    <i data-lucide="code-2" class="w-3 h-3"></i>
+                    Python
+                </span>
+                <span>•</span>
+                <span class="inline-flex items-center gap-1">
+                    <i data-lucide="rocket" class="w-3 h-3"></i>
+                    Uvicorn
+                </span>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // 初始化 Lucide 图标
+        lucide.createIcons();
+    </script>
+    <script>
+        // 运行时间更新
+        const startTime = new Date();
+        function updateUptime() {
+            const now = new Date();
+            const diff = Math.floor((now - startTime) / 1000);
+            const hours = Math.floor(diff / 3600);
+            const minutes = Math.floor((diff % 3600) / 60);
+            const seconds = diff % 60;
+            
+            let uptimeText = '';
+            if (hours > 0) {
+                uptimeText = `${hours}h ${minutes}m`;
+            } else if (minutes > 0) {
+                uptimeText = `${minutes}m ${seconds}s`;
+            } else {
+                uptimeText = `${seconds}s`;
+            }
+            
+            document.getElementById('uptime').textContent = uptimeText;
+        }
+        setInterval(updateUptime, 1000);
+        updateUptime();
+
+        // 🎨 控制台彩蛋
+        console.clear();
+        
+        // ASCII Art Logo
+        console.log('%c' +
+            '  ______        _     _    ____ ___  \n' +
+            ' |  ____|      | |   / \\  |  _ \\_ _| \n' +
+            ' | |__ __ _ ___| |_ / _ \\ | |_) | |  \n' +
+            ' |  __/ _` / __| __/ ___ \\|  __/| |  \n' +
+            ' | | | (_| \\__ \\ || |_| || |  |___| \n' +
+            ' |_|  \\__,_|___/\\__\\___(_)_|  |_____|\n',
+            'color: #3b82f6; font-weight: bold; font-family: monospace;'
+        );
+        
+        console.log('%c🚀 FastAPI Mail Application', 
+            'font-size: 20px; font-weight: bold; color: #3b82f6;'
+        );
+        
+        console.log('%c服务状态: %c✓ 运行中', 
+            'font-weight: bold; color: #6b7280;',
+            'font-weight: bold; color: #10b981;'
+        );
+        
+        console.log('%c版本: %c{{VERSION}}', 
+            'font-weight: bold; color: #6b7280;',
+            'color: #3b82f6;'
+        );
+        
+        console.log('%c环境: %c{{ENVIRONMENT}}', 
+            'font-weight: bold; color: #6b7280;',
+            'color: #8b5cf6;'
+        );
+        
+        console.log('%c端口: %c{{PORT}}', 
+            'font-weight: bold; color: #6b7280;',
+            'color: #f59e0b;'
+        );
+        
+        console.log('\n%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 
+            'color: #e5e7eb;'
+        );
+        
+        // 可用端点
+        console.log('\n%c📌 可用端点:', 
+            'font-size: 16px; font-weight: bold; color: #6366f1;'
+        );
+        
+        const endpoints = [
+            { name: 'Swagger UI', url: '/docs', emoji: '📚', color: '#3b82f6' },
+            { name: 'ReDoc', url: '/redoc', emoji: '📖', color: '#8b5cf6' },
+            { name: 'Gmail 状态', url: '/api/gmail/status', emoji: '📧', color: '#10b981' },
+            { name: 'OpenAPI Schema', url: '/openapi.json', emoji: '📄', color: '#f59e0b' }
+        ];
+        
+        endpoints.forEach(endpoint => {
+            console.log(
+                `%c${endpoint.emoji} %c${endpoint.name}%c → %c${window.location.origin}${endpoint.url}`,
+                'font-size: 14px;',
+                'font-weight: bold; color: ' + endpoint.color + ';',
+                'color: #6b7280;',
+                'color: #9ca3af; font-style: italic;'
+            );
+        });
+        
+        console.log('\n%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 
+            'color: #e5e7eb;'
+        );
+        
+        // 彩蛋提示
+        console.log('\n%c💡 提示:', 
+            'font-size: 14px; font-weight: bold; color: #f59e0b;'
+        );
+        
+        console.log('%c输入 %capi.info()%c 查看更多 API 信息', 
+            'color: #6b7280;',
+            'background: #f3f4f6; color: #3b82f6; padding: 2px 6px; border-radius: 3px; font-family: monospace;',
+            'color: #6b7280;'
+        );
+        
+        console.log('%c输入 %capi.test()%c 测试 API 连接', 
+            'color: #6b7280;',
+            'background: #f3f4f6; color: #10b981; padding: 2px 6px; border-radius: 3px; font-family: monospace;',
+            'color: #6b7280;'
+        );
+        
+        console.log('\n%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', 
+            'color: #e5e7eb;'
+        );
+        
+        // 创建交互式 API 对象
+        window.api = {
+            info: function() {
+                console.clear();
+                console.log('%c📦 API 详细信息', 
+                    'font-size: 18px; font-weight: bold; color: #3b82f6;'
+                );
+                console.table({
+                    '服务名称': 'FastAPI Mail Application',
+                    '版本': '{{VERSION}}',
+                    '环境': '{{ENVIRONMENT}}',
+                    '端口': '{{PORT}}',
+                    '文档': window.location.origin + '/docs',
+                    '技术栈': 'FastAPI + Python + Uvicorn'
+                });
+                console.log('%c✨ 更多信息请访问 /docs', 
+                    'color: #10b981; font-weight: bold;'
+                );
+            },
+            
+            test: async function() {
+                console.log('%c⏳ 正在测试 API 连接...', 
+                    'color: #f59e0b;'
+                );
+                try {
+                    const response = await fetch('/docs');
+                    if (response.ok) {
+                        console.log('%c✓ API 连接成功！', 
+                            'font-size: 16px; font-weight: bold; color: #10b981;'
+                        );
+                        console.log('%c状态码: %c' + response.status, 
+                            'font-weight: bold; color: #6b7280;',
+                            'color: #10b981;'
+                        );
+                    } else {
+                        console.log('%c✗ API 连接失败', 
+                            'font-size: 16px; font-weight: bold; color: #ef4444;'
+                        );
+                    }
+                } catch (error) {
+                    console.log('%c✗ 网络错误: ' + error.message, 
+                        'color: #ef4444;'
+                    );
+                }
+            },
+            
+            endpoints: function() {
+                console.clear();
+                console.log('%c🛣️ 可用端点列表', 
+                    'font-size: 18px; font-weight: bold; color: #8b5cf6;'
+                );
+                console.table(endpoints.map(e => ({
+                    '名称': e.name,
+                    '路径': e.url,
+                    '完整URL': window.location.origin + e.url
+                })));
+            }
+        };
+        
+        // 欢迎消息
+        console.log('%c👋 欢迎使用 FastAPI Mail Application！', 
+            'font-size: 14px; color: #6b7280;'
+        );
+        
+        console.log('%c开始你的 API 之旅吧！🚀\n\n', 
+            'font-size: 14px; font-weight: bold; color: #3b82f6;'
+        );
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,18 @@
+# FastAPI核心
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# 配置管理
+pydantic-settings==2.0.3
+email-validator
+
+# 数据库
+sqlalchemy==2.0.36
+pymysql==1.1.1
+
+# 邮件处理
+imap-tools==1.7.1      # 现代化的 IMAP 客户端
+mail-parser==3.15.0    # 邮件解析
+
+# 工具
+python-dotenv==1.0.0
