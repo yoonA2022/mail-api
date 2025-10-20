@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from api.mail import router as mail_router
 from api.imap.email import router as imap_router
+from api.imap.email_search_api import router as search_router
 from contextlib import asynccontextmanager
 import asyncio
 
@@ -66,6 +67,7 @@ app.add_middleware(
 # 注册路由
 app.include_router(mail_router)
 app.include_router(imap_router)
+app.include_router(search_router)
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():

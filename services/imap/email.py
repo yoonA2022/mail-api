@@ -4,7 +4,7 @@ IMAP 邮件服务
 """
 
 from config.database import get_db_connection
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 
 
 class ImapEmailService:

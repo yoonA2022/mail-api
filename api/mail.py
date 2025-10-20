@@ -6,8 +6,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from services.mail_service import MailService
 from services.websocket_service import WebSocketService
-from typing import Optional
-
 
 router = APIRouter(
     prefix="/api/mail",

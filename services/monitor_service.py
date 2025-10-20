@@ -6,8 +6,6 @@
 import asyncio
 from services.mail_service import MailService
 from services.websocket_service import WebSocketService
-from datetime import datetime
-
 
 class MonitorService:
     """监控服务 - 后台检测新邮件并推送"""

@@ -6,7 +6,6 @@
 """
 
 import pymysql
-import os
 import sys
 from pathlib import Path
 from config.database import get_database_settings
