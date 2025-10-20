@@ -4,8 +4,8 @@
 """
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from services.mail_service import MailService
-from services.websocket_service import WebSocketService
+from services.imap.mail_service import MailService
+from services.websocket.websocket_service import WebSocketService
 
 router = APIRouter(
     prefix="/api/mail",

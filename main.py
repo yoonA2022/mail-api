@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config.settings import get_settings
 from datetime import datetime
 from pathlib import Path
-from api.mail import router as mail_router
+from api.websocket.mail import router as mail_router
 from api.imap.email import router as imap_router
 from api.imap.email_search_api import router as search_router
 from contextlib import asynccontextmanager
@@ -19,7 +19,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
-    from services.monitor_service import MonitorService
+    from services.monitor.monitor_service import MonitorService
     
     # 在后台启动监控服务
     print("🌐 启动邮件监控服务...")

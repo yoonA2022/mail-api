@@ -4,8 +4,8 @@
 """
 
 import asyncio
-from services.mail_service import MailService
-from services.websocket_service import WebSocketService
+from services.imap.mail_service import MailService
+from services.websocket.websocket_service import WebSocketService
 
 class MonitorService:
     """监控服务 - 后台检测新邮件并推送"""
