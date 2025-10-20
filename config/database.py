@@ -5,6 +5,7 @@ import pymysql
 from pymysql.cursors import DictCursor
 from contextlib import contextmanager
 from typing import Generator
+from dbutils.pooled_db import PooledDB
 
 
 class DatabaseSettings(BaseSettings):
@@ -33,43 +34,51 @@ def get_database_settings() -> DatabaseSettings:
     return DatabaseSettings()
 
 
+# 全局连接池（单例）
+_connection_pool = None
+
+
+def get_connection_pool() -> PooledDB:
+    """获取数据库连接池单例"""
+    global _connection_pool
+    
+    if _connection_pool is None:
+        settings = get_database_settings()
+        _connection_pool = PooledDB(
+            creator=pymysql,
+            maxconnections=20,  # 最大连接数
+            mincached=2,        # 最小空闲连接数
+            maxcached=10,       # 最大空闲连接数
+            maxshared=0,        # 最大共享连接数（0表示不共享）
+            blocking=True,      # 连接池满时是否阻塞等待
+            maxusage=None,      # 单个连接最大使用次数（None表示无限制）
+            setsession=[],      # 连接前执行的SQL命令
+            ping=1,             # 检查连接是否可用（1=默认检查）
+            host=settings.db_host,
+            port=settings.db_port,
+            user=settings.db_user,
+            password=settings.db_password,
+            database=settings.db_name,
+            charset=settings.db_charset,
+            cursorclass=DictCursor,
+            autocommit=False
+        )
+        print(f"✅ 数据库连接池已创建: 最大连接数={20}, 最小空闲={2}")
+    
+    return _connection_pool
+
+
 class DatabaseConnection:
-    """数据库连接管理类"""
+    """数据库连接管理类（使用连接池）"""
     
-    def __init__(self, settings: DatabaseSettings = None):
-        self.settings = settings or get_database_settings()
-        self._connection = None
-    
-    def get_connection_params(self) -> dict:
-        """获取数据库连接参数"""
-        return {
-            'host': self.settings.db_host,
-            'port': self.settings.db_port,
-            'user': self.settings.db_user,
-            'password': self.settings.db_password,
-            'database': self.settings.db_name,
-            'charset': self.settings.db_charset,
-            'cursorclass': DictCursor,
-            'connect_timeout': self.settings.db_connect_timeout,
-            'autocommit': False
-        }
-    
-    def connect(self):
-        """创建数据库连接"""
-        if self._connection is None or not self._connection.open:
-            self._connection = pymysql.connect(**self.get_connection_params())
-        return self._connection
-    
-    def close(self):
-        """关闭数据库连接"""
-        if self._connection and self._connection.open:
-            self._connection.close()
-            self._connection = None
+    def __init__(self):
+        self.pool = get_connection_pool()
     
     @contextmanager
     def get_cursor(self) -> Generator:
-        """获取数据库游标（上下文管理器）"""
-        connection = self.connect()
+        """获取数据库游标（上下文管理器，从连接池获取连接）"""
+        # 从连接池获取连接
+        connection = self.pool.connection()
         cursor = connection.cursor()
         try:
             yield cursor
@@ -79,6 +88,8 @@ class DatabaseConnection:
             raise e
         finally:
             cursor.close()
+            # 连接自动归还到连接池
+            connection.close()
 
 
 def get_db_connection() -> DatabaseConnection:

@@ -9,6 +9,7 @@ email-validator
 # 数据库
 sqlalchemy==2.0.36
 pymysql==1.1.1
+DBUtils==3.1.0  # 数据库连接池
 
 # 邮件处理
 imap-tools==1.7.1      # 现代化的 IMAP 客户端
