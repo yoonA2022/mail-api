@@ -4,14 +4,15 @@
 """
 
 import asyncio
-from services.imap.mail_service import MailService
+from services.imap.mail_service_async import AsyncMailService
 from services.websocket.websocket_service import WebSocketService
+from config.performance import MONITOR_CHECK_INTERVAL, MONITOR_MAX_CONCURRENT
 
 class MonitorService:
     """监控服务 - 后台检测新邮件并推送"""
     
     _is_running = False
-    _check_interval = 15  # 检测间隔（秒）
+    _check_interval = MONITOR_CHECK_INTERVAL  # 检测间隔（秒），从配置文件读取
     
     @classmethod
     async def start(cls):
@@ -37,15 +38,17 @@ class MonitorService:
                     await asyncio.sleep(1)
                     continue
                 
-                # 2. 并发检测所有账户
-                tasks = []
-                for account_id in online_accounts:
-                    task = asyncio.create_task(cls._check_account(account_id))
-                    tasks.append(task)
+                # 2. 并发检测所有账户（限制并发数）
+                accounts_list = list(online_accounts)
                 
-                # 等待所有检测完成
-                if tasks:
-                    await asyncio.gather(*tasks, return_exceptions=True)
+                # 分批处理，避免同时检测太多账户
+                for i in range(0, len(accounts_list), MONITOR_MAX_CONCURRENT):
+                    batch = accounts_list[i:i + MONITOR_MAX_CONCURRENT]
+                    tasks = [asyncio.create_task(cls._check_account(account_id)) for account_id in batch]
+                    
+                    # 等待这一批完成
+                    if tasks:
+                        await asyncio.gather(*tasks, return_exceptions=True)
                 
                 # 3. 等待检测间隔
                 await asyncio.sleep(cls._check_interval)
@@ -75,8 +78,8 @@ class MonitorService:
             folder: 文件夹名称
         """
         try:
-            # 1. 检测是否有新邮件
-            result = MailService.check_new_mail(account_id, folder)
+            # 1. 检测是否有新邮件（异步）
+            result = await AsyncMailService.check_new_mail(account_id, folder)
             
             if not result.get('has_new'):
                 return  # 没有新邮件
@@ -84,15 +87,15 @@ class MonitorService:
             new_count = result.get('new_count', 0)
             print(f"📬 检测到账户 {account_id} 有 {new_count} 封新邮件")
             
-            # 2. 同步新邮件
-            sync_result = MailService.sync_from_imap(account_id, folder)
+            # 2. 同步新邮件（异步）
+            sync_result = await AsyncMailService.sync_from_imap(account_id, folder)
             
             if not sync_result['success']:
                 print(f"❌ 同步新邮件失败: {sync_result.get('error')}")
                 return
             
-            # 3. 获取新邮件列表（最新的N封）
-            mail_list = MailService.get_mail_list(account_id, folder, limit=new_count, offset=0)
+            # 3. 获取新邮件列表（最新的N封）（异步）
+            mail_list = await AsyncMailService.get_mail_list(account_id, folder, limit=new_count, offset=0)
             
             if not mail_list['success']:
                 print(f"❌ 获取新邮件列表失败: {mail_list.get('error')}")

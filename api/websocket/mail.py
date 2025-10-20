@@ -4,7 +4,7 @@
 """
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from services.imap.mail_service import MailService
+from services.imap.mail_service_async import AsyncMailService
 from services.websocket.websocket_service import WebSocketService
 
 router = APIRouter(
@@ -42,7 +42,7 @@ async def get_mail_list(
             "total": 22
         }
     """
-    result = MailService.get_mail_list(account_id, folder, limit, offset)
+    result = await AsyncMailService.get_mail_list(account_id, folder, limit, offset)
     return result
 
 
@@ -65,7 +65,7 @@ async def sync_mail(
             "message": "同步完成"
         }
     """
-    result = MailService.sync_from_imap(account_id, folder)
+    result = await AsyncMailService.sync_from_imap(account_id, folder)
     return result
 
 
@@ -89,7 +89,7 @@ async def check_new_mail(
             "new_count": 3
         }
     """
-    result = MailService.check_new_mail(account_id, folder)
+    result = await AsyncMailService.check_new_mail(account_id, folder)
     return result
 
 
@@ -148,3 +148,24 @@ async def get_status():
         "total_connections": WebSocketService.get_total_connections(),
         "timestamp": datetime.now().isoformat()
     }
+
+
+@router.get("/performance")
+async def get_performance_stats():
+    """
+    获取性能统计
+    
+    Returns:
+        性能指标数据
+    """
+    try:
+        from utils.performance_monitor import PerformanceMonitor
+        return {
+            "success": True,
+            "data": PerformanceMonitor.get_stats()
+        }
+    except ImportError:
+        return {
+            "success": False,
+            "error": "性能监控未启用"
+        }
