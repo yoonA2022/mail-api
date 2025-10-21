@@ -1,20 +1,56 @@
-# FastAPI核心
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+# =====================================
+# 🚀 FastAPI 核心框架与运行依赖
+# =====================================
+fastapi==0.119.1          # 主框架，提供API路由、依赖注入、模型验证等
+uvicorn==0.38.0           # ASGI服务器，用于运行FastAPI应用
+starlette==0.48.0         # FastAPI底层框架，提供请求/响应、中间件、WebSocket等功能
+anyio==3.7.1              # 异步IO抽象层，FastAPI内部依赖
+h11==0.16.0               # HTTP底层协议库（Uvicorn依赖）
+httptools==0.7.1          # 提升HTTP性能（Uvicorn依赖）
+websockets==15.0.1        # WebSocket通信支持（用于实时推送邮件）
+watchfiles==1.1.1         # 自动重载文件变化（用于开发阶段 hot reload）
+colorama==0.4.6           # 控制台彩色输出（Windows终端支持）
 
-# 配置管理
-pydantic-settings==2.0.3
-email-validator
+# =====================================
+# ⚙️ 配置管理与数据验证
+# =====================================
+pydantic==2.12.2          # 数据模型验证与序列化（FastAPI核心依赖）
+pydantic_core==2.41.4     # Pydantic底层性能引擎
+pydantic-settings==2.0.3  # 从.env或系统变量中读取配置
+python-dotenv==1.0.0      # 读取.env文件，加载环境变量
+email-validator==2.3.0    # 邮箱地址格式验证（Pydantic集成）
+PyYAML==6.0.3             # YAML配置文件解析
 
-# 数据库
-sqlalchemy==2.0.36
-pymysql==1.1.1
-DBUtils==3.1.0  # 数据库连接池
+# =====================================
+# 💾 数据库相关
+# =====================================
+SQLAlchemy==2.0.36        # ORM框架，用于数据库建模与查询
+PyMySQL==1.1.1            # MySQL数据库驱动
+DBUtils==3.1.0            # 数据库连接池管理，提升数据库访问性能
+greenlet==3.2.4           # SQLAlchemy异步支持底层依赖
 
-# 邮件处理
-imap-tools==1.7.1      # 现代化的 IMAP 客户端
-mail-parser==3.15.0    # 邮件解析
-beautifulsoup4==4.12.3 # HTML解析，用于提取纯文本
+# =====================================
+# 📬 邮件相关
+# =====================================
+imap-tools==1.7.1         # IMAP客户端，用于连接邮箱并拉取邮件
+IMAPClient==3.0.1         # 另一个IMAP库（可选，imap-tools内部依赖）
+mail-parser==3.15.0       # 邮件解析工具（支持附件、正文、编码识别）
+beautifulsoup4==4.12.3    # HTML解析器，用于提取邮件中的纯文本
+soupsieve==2.8            # BeautifulSoup底层依赖
+dnspython==2.8.0          # DNS解析支持（邮件验证等需要）
 
-# 工具
-python-dotenv==1.0.0
+# =====================================
+# 🧰 通用工具库
+# =====================================
+click==8.3.0              # 命令行工具支持（部分脚本或uvicorn依赖）
+simplejson==3.20.2        # 更快的JSON解析库（可选）
+six==1.17.0               # Python2/3兼容性工具（间接依赖）
+idna==3.11                # 域名解析支持（网络层常用依赖）
+annotated-types==0.7.0    # Pydantic类型注解支持扩展
+typing_extensions==4.15.0 # 新类型提示支持（Python版本兼容）
+typing-inspection==0.4.2  # 类型检测（间接依赖，可保留）
+
+# =====================================
+# ✅ 建议开发环境使用
+# =====================================
+

@@ -41,6 +41,10 @@ cp .env.example .env
 uvicorn main:app --reload
 ```
 
+```bash
+python main.py
+```
+
 应用将在 `http://localhost:8000` 启动。
 
 
