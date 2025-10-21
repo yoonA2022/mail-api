@@ -25,7 +25,7 @@ DATABASE_POOL_CONFIG = {
 # ==================== 监控服务配置 ====================
 
 # 新邮件检测间隔（秒）
-MONITOR_CHECK_INTERVAL = 60  # 从15秒改为60秒，减少频繁检测
+MONITOR_CHECK_INTERVAL = 30  # 从15秒改为60秒，减少频繁检测
 
 # 监控服务并发检测数
 MONITOR_MAX_CONCURRENT = 5  # 同时检测的账户数

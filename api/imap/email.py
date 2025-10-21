@@ -54,3 +54,26 @@ async def get_account_detail(account_id: int):
         "success": True,
         "data": account_info
     }
+
+
+@router.post("/refresh-status/{account_id}")
+async def refresh_mail_status(account_id: int, folder: Optional[str] = 'INBOX'):
+    """
+    刷新邮件状态（已读、星标等）
+    
+    Args:
+        account_id: 账户ID
+        folder: 文件夹名称，默认 INBOX
+        
+    Returns:
+        刷新结果
+    """
+    from services.imap.mail_service_async import AsyncMailService
+    
+    # 使用异步方法刷新邮件状态
+    result = await AsyncMailService.refresh_mail_status(account_id, folder)
+    
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error'))
+    
+    return result

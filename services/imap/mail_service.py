@@ -395,6 +395,89 @@ class MailService:
             }
     
     @staticmethod
+    def refresh_mail_status(account_id: int, folder: str = 'INBOX'):
+        """
+        刷新邮件状态（已读、星标等）
+        
+        工作流程：
+        1. 连接IMAP服务器
+        2. 获取所有邮件的UID和flags
+        3. 批量更新数据库中对应邮件的flags字段
+        
+        Args:
+            account_id: 账户ID
+            folder: 文件夹名称
+            
+        Returns:
+            {
+                'success': True,
+                'updated_count': 22,
+                'message': '更新成功'
+            }
+        """
+        try:
+            # 1. 获取账户信息
+            account = MailService._get_account(account_id)
+            if not account:
+                return {'success': False, 'error': '账户不存在'}
+            
+            print(f"🔄 开始刷新邮件状态: 账户 {account_id}, 文件夹 {folder}")
+            
+            # 2. 连接IMAP服务器
+            with MailBox(account['imap_host'], account['imap_port']).login(account['email'], account['password']) as mailbox:
+                mailbox.folder.set(folder)
+                
+                # 3. 获取所有邮件的UID和flags（不下载邮件内容）
+                messages = list(mailbox.fetch(AND(all=True), mark_seen=False))
+                
+                if not messages:
+                    return {'success': True, 'updated_count': 0, 'message': '没有邮件需要更新'}
+                
+                print(f"📧 服务器上有 {len(messages)} 封邮件，开始更新状态...")
+                
+                # 4. 批量更新数据库
+                db = get_db_connection()
+                updated_count = 0
+                
+                with db.get_cursor() as cursor:
+                    for msg in messages:
+                        try:
+                            uid = str(msg.uid)
+                            flags = list(msg.flags) if msg.flags else []
+                            
+                            # 更新数据库中的flags字段
+                            cursor.execute("""
+                                UPDATE email_list
+                                SET flags = %s
+                                WHERE account_id = %s AND uid = %s AND folder = %s
+                            """, (json.dumps(flags), account_id, uid, folder))
+                            
+                            if cursor.rowcount > 0:
+                                updated_count += 1
+                        
+                        except Exception as e:
+                            print(f"⚠️ 更新邮件状态失败 (UID={uid}): {e}")
+                            continue
+                
+                print(f"✅ 状态刷新完成: 更新了 {updated_count}/{len(messages)} 封邮件")
+                
+                return {
+                    'success': True,
+                    'updated_count': updated_count,
+                    'total_count': len(messages),
+                    'message': f'成功更新 {updated_count} 封邮件的状态'
+                }
+        
+        except Exception as e:
+            print(f"❌ 刷新邮件状态失败: {e}")
+            traceback.print_exc()
+            return {
+                'success': False,
+                'error': str(e),
+                'updated_count': 0
+            }
+    
+    @staticmethod
     def _parse_imap_tools_message(msg, account_id, folder):
         """使用mailparser解析imap-tools的邮件对象"""
         try:

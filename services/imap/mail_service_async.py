@@ -152,4 +152,20 @@ class AsyncMailService:
         # 调用原有的同步方法
         from services.imap.mail_service import MailService
         return MailService.check_new_mail(account_id, folder)
+    
+    @staticmethod
+    async def refresh_mail_status(account_id: int, folder: str = 'INBOX'):
+        """异步刷新邮件状态"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            _thread_pool,
+            AsyncMailService._refresh_mail_status_sync,
+            account_id, folder
+        )
+    
+    @staticmethod
+    def _refresh_mail_status_sync(account_id: int, folder: str):
+        """同步刷新邮件状态（在线程池中执行）"""
+        from services.imap.mail_service import MailService
+        return MailService.refresh_mail_status(account_id, folder)
 
