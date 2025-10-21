@@ -14,6 +14,7 @@ DBUtils==3.1.0  # 数据库连接池
 # 邮件处理
 imap-tools==1.7.1      # 现代化的 IMAP 客户端
 mail-parser==3.15.0    # 邮件解析
+beautifulsoup4==4.12.3 # HTML解析，用于提取纯文本
 
 # 工具
 python-dotenv==1.0.0

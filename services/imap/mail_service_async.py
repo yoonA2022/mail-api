@@ -120,21 +120,21 @@ class AsyncMailService:
             }
     
     @staticmethod
-    async def sync_from_imap(account_id: int, folder: str = 'INBOX'):
+    async def sync_from_imap(account_id: int, folder: str = 'INBOX', batch_size: int = 50, progress_callback=None):
         """异步同步邮件"""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             _thread_pool,
             AsyncMailService._sync_from_imap_sync,
-            account_id, folder
+            account_id, folder, batch_size, progress_callback
         )
     
     @staticmethod
-    def _sync_from_imap_sync(account_id: int, folder: str):
+    def _sync_from_imap_sync(account_id: int, folder: str, batch_size: int = 50, progress_callback=None):
         """同步邮件（在线程池中执行）"""
         # 调用原有的同步方法
         from services.imap.mail_service import MailService
-        return MailService.sync_from_imap(account_id, folder)
+        return MailService.sync_from_imap(account_id, folder, batch_size, progress_callback)
     
     @staticmethod
     async def check_new_mail(account_id: int, folder: str = 'INBOX'):

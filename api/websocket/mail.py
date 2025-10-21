@@ -6,6 +6,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from services.imap.mail_service_async import AsyncMailService
 from services.websocket.websocket_service import WebSocketService
+from config.performance import SYNC_BATCH_SIZE
 
 router = APIRouter(
     prefix="/api/mail",
@@ -49,23 +50,46 @@ async def get_mail_list(
 @router.post("/sync")
 async def sync_mail(
     account_id: int = Query(..., description="账户ID"),
-    folder: str = Query('INBOX', description="文件夹名称")
+    folder: str = Query('INBOX', description="文件夹名称"),
+    batch_size: int = Query(SYNC_BATCH_SIZE, description="每批处理数量")
 ):
     """
-    手动同步邮件
+    手动同步邮件（优化版）
     
     Args:
         account_id: 账户ID
         folder: 文件夹名称，默认INBOX
+        batch_size: 每批处理的邮件数量，默认50
     
     Returns:
         {
             "success": true,
             "count": 22,
+            "total": 173,
             "message": "同步完成"
         }
     """
-    result = await AsyncMailService.sync_from_imap(account_id, folder)
+    # 定义进度回调函数，通过WebSocket推送进度
+    async def progress_callback(current, total, message):
+        await WebSocketService.push_to_account(account_id, {
+            'type': 'sync_progress',
+            'current': current,
+            'total': total,
+            'message': message,
+            'percentage': round(current / total * 100, 2)
+        })
+    
+    result = await AsyncMailService.sync_from_imap(account_id, folder, batch_size, progress_callback)
+    
+    # 同步完成后推送通知
+    if result['success']:
+        await WebSocketService.push_to_account(account_id, {
+            'type': 'sync_complete',
+            'count': result.get('count', 0),
+            'total': result.get('total', 0),
+            'message': result.get('message', '同步完成')
+        })
+    
     return result
 
 

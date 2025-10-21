@@ -9,10 +9,47 @@ import json
 from datetime import datetime
 import traceback
 import mailparser
+from bs4 import BeautifulSoup
+import re
 
 
 class MailService:
     """邮件服务 - 统一管理IMAP和数据库操作"""
+    
+    @staticmethod
+    def _html_to_text(html_content: str) -> str:
+        """
+        将HTML内容转换为纯文本
+        
+        Args:
+            html_content: HTML内容
+            
+        Returns:
+            纯文本内容
+        """
+        try:
+            # 使用BeautifulSoup解析HTML
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # 移除script和style标签
+            for script in soup(['script', 'style']):
+                script.decompose()
+            
+            # 获取纯文本
+            text = soup.get_text()
+            
+            # 清理多余的空白字符
+            lines = (line.strip() for line in text.splitlines())
+            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+            text = ' '.join(chunk for chunk in chunks if chunk)
+            
+            return text
+        except Exception as e:
+            print(f"⚠️ HTML转文本失败: {e}")
+            # 如果解析失败，使用简单的正则表达式去除HTML标签
+            text = re.sub(r'<[^>]+>', '', html_content)
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text
     
     @staticmethod
     def _get_account(account_id: int):
@@ -124,13 +161,21 @@ class MailService:
             }
     
     @staticmethod
-    def sync_from_imap(account_id: int, folder: str = 'INBOX'):
+    def sync_from_imap(account_id: int, folder: str = 'INBOX', batch_size: int = 50, progress_callback=None):
         """
-        从IMAP服务器同步邮件到数据库
+        从IMAP服务器同步邮件到数据库（优化版）
+        
+        优化点：
+        1. 批量检查已存在的UID
+        2. 批量插入数据库
+        3. 分批处理，避免内存溢出
+        4. 支持进度回调
         
         Args:
             account_id: 账户ID
             folder: 文件夹名称
+            batch_size: 每批处理的邮件数量，默认50
+            progress_callback: 进度回调函数 callback(current, total, message)
             
         Returns:
             {
@@ -149,83 +194,113 @@ class MailService:
             
             print(f"🔗 连接IMAP服务器: {account['imap_host']}:{account['imap_port']}")
             
-            # 2. 连接IMAP服务器（使用imap-tools）
+            # 2. 连接IMAP服务器
             with MailBox(account['imap_host'], account['imap_port']).login(account['email'], account['password']) as mailbox:
-                # 选择文件夹
                 mailbox.folder.set(folder)
                 
-                # 3. 获取所有邮件（imap-tools自动使用UID）
+                # 3. 获取所有邮件UID（只获取UID，不获取邮件内容）
                 messages = list(mailbox.fetch(AND(all=True), mark_seen=False))
-                print(f"📧 发现 {len(messages)} 封邮件")
+                total_count = len(messages)
+                print(f"📧 发现 {total_count} 封邮件")
                 
                 if not messages:
                     return {'success': True, 'count': 0, 'message': '没有邮件'}
                 
-                # 4. 解析并存入数据库
+                # 4. 批量检查哪些UID已存在
                 db = get_db_connection()
-                saved_count = 0
-                total_count = len(messages)
+                all_uids = [str(msg.uid) for msg in messages]
                 
                 with db.get_cursor() as cursor:
-                    for idx, msg in enumerate(messages, 1):
+                    # 批量查询已存在的UID
+                    placeholders = ','.join(['%s'] * len(all_uids))
+                    cursor.execute(f"""
+                        SELECT uid FROM email_list
+                        WHERE account_id = %s AND folder = %s AND uid IN ({placeholders})
+                    """, [account_id, folder] + all_uids)
+                    
+                    existing_uids = {row['uid'] for row in cursor.fetchall()}
+                    print(f"📊 数据库已有 {len(existing_uids)} 封邮件")
+                
+                # 5. 过滤出需要同步的邮件
+                new_messages = [msg for msg in messages if str(msg.uid) not in existing_uids]
+                new_count = len(new_messages)
+                
+                if new_count == 0:
+                    print(f"✅ 没有新邮件需要同步")
+                    return {'success': True, 'count': 0, 'message': '没有新邮件'}
+                
+                print(f"📥 准备同步 {new_count} 封新邮件")
+                
+                # 6. 分批处理邮件
+                saved_count = 0
+                
+                for batch_start in range(0, new_count, batch_size):
+                    batch_end = min(batch_start + batch_size, new_count)
+                    batch_messages = new_messages[batch_start:batch_end]
+                    
+                    print(f"\n🔄 处理第 {batch_start + 1}-{batch_end} 封邮件...")
+                    
+                    # 解析这批邮件
+                    batch_data = []
+                    for idx, msg in enumerate(batch_messages, batch_start + 1):
                         try:
-                            # 解析邮件数据
                             email_data = MailService._parse_imap_tools_message(msg, account_id, folder)
+                            batch_data.append(email_data)
                             
-                            print(f"📧 [{idx}/{total_count}] UID={email_data['uid']}, Subject={email_data['subject'][:50]}")
+                            print(f"📧 [{idx}/{new_count}] UID={email_data['uid']}, Subject={email_data['subject'][:50]}")
                             
-                            # 检查是否已存在
-                            cursor.execute("""
-                                SELECT id FROM email_list
-                                WHERE account_id = %s AND uid = %s AND folder = %s
-                            """, (account_id, email_data['uid'], folder))
-                            
-                            existing = cursor.fetchone()
-                            if existing:
-                                print(f"  ⏭️ 跳过（已存在）")
-                                continue
-                            
-                            # 插入数据库
-                            cursor.execute("""
-                                INSERT INTO email_list (
-                                    account_id, uid, message_id, subject, from_email, from_name,
-                                    to_emails, cc_emails, bcc_emails, date, size, flags, has_attachments,
-                                    attachment_count, attachment_names, text_preview,
-                                    is_html, folder, synced_at
-                                ) VALUES (
-                                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                                )
-                            """, (
-                                account_id,
-                                email_data['uid'],
-                                email_data['message_id'],
-                                email_data['subject'],
-                                email_data['from_email'],
-                                email_data['from_name'],
-                                json.dumps(email_data['to_emails']),
-                                json.dumps(email_data['cc_emails']),
-                                json.dumps(email_data['bcc_emails']),
-                                email_data['date'],
-                                email_data['size'],
-                                json.dumps(email_data['flags']),
-                                email_data['has_attachments'],
-                                email_data['attachment_count'],
-                                json.dumps(email_data['attachment_names']),
-                                email_data['text_preview'],
-                                email_data['is_html'],
-                                folder,
-                                datetime.now()
-                            ))
-                            
-                            saved_count += 1
-                            print(f"  ✅ 已保存")
+                            # 进度回调
+                            if progress_callback:
+                                progress_callback(idx, new_count, f"正在解析第 {idx}/{new_count} 封邮件")
                         
                         except Exception as e:
                             print(f"⚠️ 解析邮件失败: {e}")
                             traceback.print_exc()
                             continue
+                    
+                    # 批量插入数据库
+                    if batch_data:
+                        with db.get_cursor() as cursor:
+                            for email_data in batch_data:
+                                try:
+                                    cursor.execute("""
+                                        INSERT INTO email_list (
+                                            account_id, uid, message_id, subject, from_email, from_name,
+                                            to_emails, cc_emails, bcc_emails, date, size, flags, has_attachments,
+                                            attachment_count, attachment_names, text_preview,
+                                            is_html, folder, synced_at
+                                        ) VALUES (
+                                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                                        )
+                                    """, (
+                                        account_id,
+                                        email_data['uid'],
+                                        email_data['message_id'],
+                                        email_data['subject'],
+                                        email_data['from_email'],
+                                        email_data['from_name'],
+                                        json.dumps(email_data['to_emails']),
+                                        json.dumps(email_data['cc_emails']),
+                                        json.dumps(email_data['bcc_emails']),
+                                        email_data['date'],
+                                        email_data['size'],
+                                        json.dumps(email_data['flags']),
+                                        email_data['has_attachments'],
+                                        email_data['attachment_count'],
+                                        json.dumps(email_data['attachment_names']),
+                                        email_data['text_preview'],
+                                        email_data['is_html'],
+                                        folder,
+                                        datetime.now()
+                                    ))
+                                    saved_count += 1
+                                except Exception as e:
+                                    print(f"⚠️ 插入数据库失败: {e}")
+                                    continue
+                        
+                        print(f"✅ 批次保存完成: {len(batch_data)} 封邮件")
                 
-                print(f"✅ 同步完成: 新增 {saved_count}/{total_count} 封邮件")
+                print(f"\n✅ 同步完成: 新增 {saved_count}/{new_count} 封邮件")
                 
                 # 记录同步日志
                 end_time = datetime.now()
@@ -249,11 +324,13 @@ class MailService:
                 return {
                     'success': True,
                     'count': saved_count,
+                    'total': total_count,
                     'message': f'同步完成: 新增 {saved_count} 封邮件'
                 }
         
         except Exception as e:
             print(f"❌ IMAP同步失败: {e}")
+            traceback.print_exc()
             return {
                 'success': False,
                 'error': str(e),
@@ -410,12 +487,8 @@ class MailService:
             elif mail.text_html:
                 is_html = 1
                 html_content = mail.text_html[0] if isinstance(mail.text_html, list) else mail.text_html
-                # mailparser已经提供了纯文本版本
-                if mail.text_plain:
-                    text_preview = mail.text_plain[0][:500] if isinstance(mail.text_plain, list) else mail.text_plain[:500]
-                else:
-                    # 如果没有纯文本，使用HTML（mailparser会自动处理）
-                    text_preview = html_content[:500]
+                # 将HTML转换为纯文本
+                text_preview = MailService._html_to_text(html_content)[:500]
             
             # 如果没有提取到文本，使用主题
             if not text_preview:

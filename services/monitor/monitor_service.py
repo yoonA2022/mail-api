@@ -6,7 +6,7 @@
 import asyncio
 from services.imap.mail_service_async import AsyncMailService
 from services.websocket.websocket_service import WebSocketService
-from config.performance import MONITOR_CHECK_INTERVAL, MONITOR_MAX_CONCURRENT
+from config.performance import MONITOR_CHECK_INTERVAL, MONITOR_MAX_CONCURRENT, MONITOR_SYNC_BATCH_SIZE
 
 class MonitorService:
     """监控服务 - 后台检测新邮件并推送"""
@@ -87,8 +87,8 @@ class MonitorService:
             new_count = result.get('new_count', 0)
             print(f"📬 检测到账户 {account_id} 有 {new_count} 封新邮件")
             
-            # 2. 同步新邮件（异步）
-            sync_result = await AsyncMailService.sync_from_imap(account_id, folder)
+            # 2. 同步新邮件（异步，使用配置的批次大小）
+            sync_result = await AsyncMailService.sync_from_imap(account_id, folder, batch_size=MONITOR_SYNC_BATCH_SIZE)
             
             if not sync_result['success']:
                 print(f"❌ 同步新邮件失败: {sync_result.get('error')}")
