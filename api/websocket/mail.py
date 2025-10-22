@@ -174,6 +174,48 @@ async def get_status():
     }
 
 
+@router.post("/sync-deleted")
+async def sync_deleted_emails(
+    account_id: int = Query(..., description="账户ID"),
+    folder: str = Query('INBOX', description="文件夹名称")
+):
+    """
+    同步删除的邮件
+    
+    工作流程：
+    1. 连接IMAP服务器，获取所有邮件UID
+    2. 查询数据库中的所有UID
+    3. 找出数据库中存在但服务器上不存在的UID（已删除的邮件）
+    4. 从数据库中删除这些邮件
+    
+    Args:
+        account_id: 账户ID
+        folder: 文件夹名称，默认INBOX
+    
+    Returns:
+        {
+            "success": true,
+            "deleted_count": 5,
+            "server_count": 100,
+            "db_count": 95,
+            "message": "同步删除完成"
+        }
+    """
+    result = await AsyncMailService.sync_deleted_emails(account_id, folder)
+    
+    # 同步完成后推送通知
+    if result['success'] and result.get('deleted_count', 0) > 0:
+        await WebSocketService.push_to_account(account_id, {
+            'type': 'sync_deleted_complete',
+            'deleted_count': result.get('deleted_count', 0),
+            'server_count': result.get('server_count', 0),
+            'db_count': result.get('db_count', 0),
+            'message': result.get('message', '同步删除完成')
+        })
+    
+    return result
+
+
 @router.get("/performance")
 async def get_performance_stats():
     """

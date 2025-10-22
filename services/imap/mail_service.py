@@ -395,6 +395,112 @@ class MailService:
             }
     
     @staticmethod
+    def sync_deleted_emails(account_id: int, folder: str = 'INBOX'):
+        """
+        同步删除的邮件
+        
+        工作流程：
+        1. 连接IMAP服务器，获取所有邮件UID
+        2. 查询数据库中的所有UID
+        3. 找出数据库中存在但服务器上不存在的UID（已删除的邮件）
+        4. 从数据库中删除这些邮件
+        
+        Args:
+            account_id: 账户ID
+            folder: 文件夹名称
+            
+        Returns:
+            {
+                'success': True,
+                'deleted_count': 5,
+                'server_count': 100,
+                'db_count': 105,
+                'message': '同步删除完成'
+            }
+        """
+        try:
+            # 1. 获取账户信息
+            account = MailService._get_account(account_id)
+            if not account:
+                return {'success': False, 'error': '账户不存在'}
+            
+            print(f"🔄 开始同步删除邮件: 账户 {account_id}, 文件夹 {folder}")
+            
+            # 2. 连接IMAP服务器，获取所有邮件UID
+            with MailBox(account['imap_host'], account['imap_port']).login(account['email'], account['password']) as mailbox:
+                mailbox.folder.set(folder)
+                
+                # 获取服务器上所有邮件的UID
+                messages = list(mailbox.fetch(AND(all=True), mark_seen=False))
+                server_uids = {str(msg.uid) for msg in messages}
+                server_count = len(server_uids)
+                
+                print(f"📧 IMAP服务器上有 {server_count} 封邮件")
+            
+            # 3. 查询数据库中的所有UID
+            db = get_db_connection()
+            with db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT uid FROM email_list
+                    WHERE account_id = %s AND folder = %s
+                """, (account_id, folder))
+                
+                db_uids = {row['uid'] for row in cursor.fetchall()}
+                db_count = len(db_uids)
+                
+                print(f"💾 数据库中有 {db_count} 封邮件")
+            
+            # 4. 找出需要删除的UID（数据库中有但服务器上没有的）
+            uids_to_delete = db_uids - server_uids
+            deleted_count = len(uids_to_delete)
+            
+            if deleted_count == 0:
+                print(f"✅ 没有需要删除的邮件")
+                return {
+                    'success': True,
+                    'deleted_count': 0,
+                    'server_count': server_count,
+                    'db_count': db_count,
+                    'message': '没有需要删除的邮件'
+                }
+            
+            print(f"🗑️ 发现 {deleted_count} 封已删除的邮件，准备从数据库中删除...")
+            
+            # 5. 从数据库中删除这些邮件
+            with db.get_cursor() as cursor:
+                for uid in uids_to_delete:
+                    try:
+                        cursor.execute("""
+                            DELETE FROM email_list
+                            WHERE account_id = %s AND uid = %s AND folder = %s
+                        """, (account_id, uid, folder))
+                        
+                        print(f"🗑️ 已删除 UID: {uid}")
+                    
+                    except Exception as e:
+                        print(f"⚠️ 删除邮件失败 (UID={uid}): {e}")
+                        continue
+            
+            print(f"✅ 同步删除完成: 删除了 {deleted_count} 封邮件")
+            
+            return {
+                'success': True,
+                'deleted_count': deleted_count,
+                'server_count': server_count,
+                'db_count': db_count - deleted_count,
+                'message': f'成功删除 {deleted_count} 封邮件'
+            }
+        
+        except Exception as e:
+            print(f"❌ 同步删除邮件失败: {e}")
+            traceback.print_exc()
+            return {
+                'success': False,
+                'error': str(e),
+                'deleted_count': 0
+            }
+    
+    @staticmethod
     def refresh_mail_status(account_id: int, folder: str = 'INBOX'):
         """
         刷新邮件状态（已读、星标等）

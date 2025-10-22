@@ -168,4 +168,20 @@ class AsyncMailService:
         """同步刷新邮件状态（在线程池中执行）"""
         from services.imap.mail_service import MailService
         return MailService.refresh_mail_status(account_id, folder)
+    
+    @staticmethod
+    async def sync_deleted_emails(account_id: int, folder: str = 'INBOX'):
+        """异步同步删除的邮件"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            _thread_pool,
+            AsyncMailService._sync_deleted_emails_sync,
+            account_id, folder
+        )
+    
+    @staticmethod
+    def _sync_deleted_emails_sync(account_id: int, folder: str):
+        """同步删除邮件（在线程池中执行）"""
+        from services.imap.mail_service import MailService
+        return MailService.sync_deleted_emails(account_id, folder)
 
