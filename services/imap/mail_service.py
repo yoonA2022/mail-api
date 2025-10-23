@@ -11,10 +11,171 @@ import traceback
 import mailparser
 from bs4 import BeautifulSoup
 import re
+from email import message_from_bytes
+from email.header import decode_header
+from email.utils import parseaddr, getaddresses
 
 
 class MailService:
     """邮件服务 - 统一管理IMAP和数据库操作"""
+    
+    @staticmethod
+    def _parse_email_addresses(header_value):
+        """
+        解析邮件地址字段（From, To, Cc, Bcc）
+        正确处理各种格式：
+        - "Name" <email@example.com>
+        - Name <email@example.com>
+        - email@example.com
+        
+        Args:
+            header_value: 邮件地址头部原始值
+            
+        Returns:
+            邮件地址列表（只包含邮箱地址）
+        """
+        if not header_value:
+            return []
+        
+        try:
+            # 先解码头部
+            decoded = MailService._decode_mail_header(header_value)
+            
+            # 使用 getaddresses 正确解析地址
+            addresses = getaddresses([decoded])
+            
+            # 只返回邮箱地址部分
+            return [email.strip() for name, email in addresses if email.strip()]
+        except Exception as e:
+            print(f"⚠️ 解析邮件地址失败: {e}")
+            # 降级处理：简单分割
+            decoded = MailService._decode_mail_header(header_value)
+            return [addr.strip() for addr in decoded.split(',') if addr.strip()]
+    
+    @staticmethod
+    def _parse_from_address(header_value):
+        """
+        解析发件人地址
+        返回 (名称, 邮箱) 元组
+        
+        Args:
+            header_value: From 头部原始值
+            
+        Returns:
+            (from_name, from_email) 元组
+        """
+        if not header_value:
+            return ('', '')
+        
+        try:
+            # 先解码头部
+            decoded = MailService._decode_mail_header(header_value)
+            
+            # 使用 parseaddr 解析
+            name, email = parseaddr(decoded)
+            
+            return (name.strip(), email.strip())
+        except Exception as e:
+            print(f"⚠️ 解析发件人失败: {e}")
+            return ('', decoded.strip())
+    
+    @staticmethod
+    def _decode_mail_header(header_value):
+        """
+        解码邮件头部（主题、发件人等）
+        正确处理各种编码，特别是 iso-2022-jp
+        
+        Args:
+            header_value: 邮件头部原始值
+            
+        Returns:
+            解码后的字符串
+        """
+        if not header_value:
+            return ''
+        
+        try:
+            decoded_parts = decode_header(header_value)
+            result = []
+            
+            for content, charset in decoded_parts:
+                if isinstance(content, bytes):
+                    if charset:
+                        try:
+                            result.append(content.decode(charset))
+                        except:
+                            # 如果指定的charset失败，尝试其他编码
+                            decoded = MailService._try_decode_bytes(content, charset)
+                            result.append(decoded)
+                    else:
+                        # 没有指定charset，尝试智能解码
+                        decoded = MailService._try_decode_bytes(content)
+                        result.append(decoded)
+                else:
+                    result.append(str(content))
+            
+            return ''.join(result)
+        except Exception as e:
+            print(f"⚠️ 解码头部失败: {e}")
+            return str(header_value)
+    
+    @staticmethod
+    def _try_decode_bytes(byte_content, suggested_charset=None):
+        """
+        尝试使用多种编码解码字节内容
+        
+        Args:
+            byte_content: 字节内容
+            suggested_charset: 建议的字符集
+            
+        Returns:
+            解码后的字符串
+        """
+        if not byte_content:
+            return ''
+        
+        # 编码优先级列表
+        encodings = []
+        
+        # 如果有建议的编码，优先尝试
+        if suggested_charset:
+            encodings.append(suggested_charset.lower())
+        
+        # 常见编码列表（优先日文和中文）
+        encodings.extend([
+            'iso-2022-jp',      # 日文邮件最常用
+            'shift_jis',        # 日文 Windows
+            'euc-jp',           # 日文 Unix
+            'cp932',            # 日文 Windows 扩展
+            'utf-8',            # 通用
+            'gbk',              # 中文简体
+            'gb2312',           # 中文简体
+            'gb18030',          # 中文简体扩展
+            'big5',             # 中文繁体
+            'latin1',           # 西文
+            'ascii',            # ASCII
+        ])
+        
+        # 去重，保持顺序
+        seen = set()
+        unique_encodings = []
+        for enc in encodings:
+            if enc and enc not in seen:
+                seen.add(enc)
+                unique_encodings.append(enc)
+        
+        # 逐个尝试
+        for encoding in unique_encodings:
+            try:
+                decoded = byte_content.decode(encoding)
+                # 检查是否包含太多替换字符（�）
+                if decoded.count('�') < len(decoded) * 0.1:  # 如果替换字符少于10%
+                    return decoded
+            except (UnicodeDecodeError, LookupError):
+                continue
+        
+        # 所有编码都失败，使用utf-8带错误处理
+        return byte_content.decode('utf-8', errors='replace')
     
     @staticmethod
     def _html_to_text(html_content: str) -> str:
@@ -585,7 +746,17 @@ class MailService:
     
     @staticmethod
     def _parse_imap_tools_message(msg, account_id, folder):
-        """使用mailparser解析imap-tools的邮件对象"""
+        """
+        使用 Python email 标准库解析邮件（正确处理各种编码）
+        
+        Args:
+            msg: imap-tools 邮件对象
+            account_id: 账户ID
+            folder: 文件夹名称
+            
+        Returns:
+            解析后的邮件数据字典
+        """
         try:
             # 获取真实UID（imap-tools直接提供）
             uid = str(msg.uid)
@@ -593,62 +764,34 @@ class MailService:
             # 获取原始邮件字节数据
             raw_email = msg.obj.as_bytes()
             
-            # 使用mailparser解析邮件
-            mail = mailparser.parse_from_bytes(raw_email)
+            # 使用 Python email 标准库解析（能正确处理 iso-2022-jp 等编码）
+            email_msg = message_from_bytes(raw_email)
             
-            # 解析主题（mailparser自动解码）
-            subject = mail.subject or ''
+            # 解析主题
+            subject = MailService._decode_mail_header(email_msg.get('Subject', ''))
             
-            # 解析发件人（mailparser自动解码）
-            from_email = ''
-            from_name = ''
-            if mail.from_:
-                # mail.from_ 是一个列表，格式: [(name, email)]
-                if isinstance(mail.from_, list) and len(mail.from_) > 0:
-                    from_tuple = mail.from_[0]
-                    if isinstance(from_tuple, tuple) and len(from_tuple) >= 2:
-                        from_name = from_tuple[0] or ''
-                        from_email = from_tuple[1] or ''
-                    else:
-                        from_email = str(from_tuple)
+            # 解析发件人（使用新的解析方法）
+            from_name, from_email = MailService._parse_from_address(email_msg.get('From', ''))
             
-            # 解析收件人（mailparser自动解码）
-            to_emails = []
-            if mail.to:
-                for to_tuple in mail.to:
-                    if isinstance(to_tuple, tuple) and len(to_tuple) >= 2:
-                        to_emails.append(to_tuple[1])
-                    else:
-                        to_emails.append(str(to_tuple))
+            # 解析收件人（使用新的解析方法）
+            to_emails = MailService._parse_email_addresses(email_msg.get('To', ''))
             
-            # 解析抄送（mailparser自动解码）
-            cc_emails = []
-            if mail.cc:
-                for cc_tuple in mail.cc:
-                    if isinstance(cc_tuple, tuple) and len(cc_tuple) >= 2:
-                        cc_emails.append(cc_tuple[1])
-                    else:
-                        cc_emails.append(str(cc_tuple))
+            # 解析抄送
+            cc_emails = MailService._parse_email_addresses(email_msg.get('Cc', ''))
             
-            # 解析密送（mailparser自动解码）
-            bcc_emails = []
-            if mail.bcc:
-                for bcc_tuple in mail.bcc:
-                    if isinstance(bcc_tuple, tuple) and len(bcc_tuple) >= 2:
-                        bcc_emails.append(bcc_tuple[1])
-                    else:
-                        bcc_emails.append(str(bcc_tuple))
+            # 解析密送
+            bcc_emails = MailService._parse_email_addresses(email_msg.get('Bcc', ''))
             
             # 解析日期
             date = None
-            if mail.date:
+            if msg.date:
                 try:
-                    date = mail.date.strftime('%Y-%m-%d %H:%M:%S')
+                    date = msg.date.strftime('%Y-%m-%d %H:%M:%S')
                 except:
-                    date = str(mail.date) if mail.date else None
+                    date = None
             
             # Message-ID
-            message_id = mail.message_id or ''
+            message_id = email_msg.get('Message-ID', '')
             
             # 邮件大小
             size = msg.size or 0
@@ -656,31 +799,68 @@ class MailService:
             # 标记（flags）- 从imap-tools获取
             flags = list(msg.flags) if msg.flags else []
             
-            # 附件信息（mailparser自动解码文件名）
-            has_attachments = 1 if mail.attachments else 0
-            attachment_count = len(mail.attachments) if mail.attachments else 0
-            attachment_names = []
-            if mail.attachments:
-                for att in mail.attachments:
-                    filename = att.get('filename', '')
-                    if filename:
-                        attachment_names.append(filename)
+            # 解析邮件正文和附件
+            text_content = ''
+            html_content = ''
+            attachments_info = []
             
-            # 提取文本预览（mailparser自动解码）
+            if email_msg.is_multipart():
+                # 多部分邮件
+                for part in email_msg.walk():
+                    content_type = part.get_content_type()
+                    content_disposition = part.get('Content-Disposition', '')
+                    
+                    # 处理附件
+                    if 'attachment' in content_disposition:
+                        filename = part.get_filename()
+                        if filename:
+                            # 解码文件名
+                            decoded_filename = MailService._decode_mail_header(filename)
+                            attachments_info.append(decoded_filename)
+                    
+                    # 处理正文
+                    elif content_type == 'text/plain' and not text_content:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            charset = part.get_content_charset()
+                            text_content = MailService._try_decode_bytes(payload, charset)
+                    
+                    elif content_type == 'text/html' and not html_content:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            charset = part.get_content_charset()
+                            html_content = MailService._try_decode_bytes(payload, charset)
+            else:
+                # 单部分邮件
+                content_type = email_msg.get_content_type()
+                payload = email_msg.get_payload(decode=True)
+                
+                if payload:
+                    charset = email_msg.get_content_charset()
+                    decoded_content = MailService._try_decode_bytes(payload, charset)
+                    
+                    if content_type == 'text/plain':
+                        text_content = decoded_content
+                    elif content_type == 'text/html':
+                        html_content = decoded_content
+            
+            # 附件信息
+            has_attachments = 1 if attachments_info else 0
+            attachment_count = len(attachments_info)
+            
+            # 生成文本预览
             text_preview = ''
             is_html = 0
             
-            # 优先使用纯文本
-            if mail.text_plain:
-                text_preview = mail.text_plain[0][:500] if isinstance(mail.text_plain, list) else mail.text_plain[:500]
-            elif mail.text_html:
+            if text_content:
+                # 优先使用纯文本
+                text_preview = text_content[:500]
+            elif html_content:
+                # 如果没有纯文本，从HTML提取
                 is_html = 1
-                html_content = mail.text_html[0] if isinstance(mail.text_html, list) else mail.text_html
-                # 将HTML转换为纯文本
                 text_preview = MailService._html_to_text(html_content)[:500]
-            
-            # 如果没有提取到文本，使用主题
-            if not text_preview:
+            else:
+                # 都没有，使用主题
                 text_preview = subject[:200] if subject else ''
             
             return {
@@ -697,13 +877,15 @@ class MailService:
                 'flags': flags,
                 'has_attachments': has_attachments,
                 'attachment_count': attachment_count,
-                'attachment_names': attachment_names,
+                'attachment_names': attachments_info,
                 'text_preview': text_preview,
                 'is_html': is_html
             }
+            
         except Exception as e:
-            print(f"❌ mailparser解析失败，使用备用方案: {e}")
+            print(f"❌ email标准库解析失败，使用备用方案: {e}")
             traceback.print_exc()
+            
             # 备用方案：使用imap-tools的基本信息
             return {
                 'uid': str(msg.uid),
@@ -722,5 +904,308 @@ class MailService:
                 'attachment_names': [],
                 'text_preview': msg.text[:500] if msg.text else '',
                 'is_html': 1 if msg.html else 0
+            }
+    
+    @staticmethod
+    def get_email_detail(account_id: int, email_id: int):
+        """
+        获取邮件详情（包括完整正文）
+        
+        Args:
+            account_id: 账户ID
+            email_id: 邮件ID（数据库ID）
+            
+        Returns:
+            邮件详情字典，包含完整的文本和HTML内容
+        """
+        try:
+            # 1. 从数据库获取邮件基本信息
+            db = get_db_connection()
+            with db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        id, uid, message_id, subject, from_email, from_name,
+                        to_emails, cc_emails, bcc_emails, date, size, flags, 
+                        has_attachments, attachment_count, attachment_names, 
+                        text_preview, is_html, folder, synced_at
+                    FROM email_list
+                    WHERE id = %s AND account_id = %s
+                """, (email_id, account_id))
+                
+                email = cursor.fetchone()
+                
+                if not email:
+                    return {
+                        'success': False,
+                        'error': '邮件不存在'
+                    }
+            
+            # 2. 从IMAP服务器获取完整邮件内容
+            account = MailService._get_account(account_id)
+            if not account:
+                return {
+                    'success': False,
+                    'error': '账户不存在'
+                }
+            
+            # 连接IMAP服务器
+            try:
+                with MailBox(account['imap_host'], account['imap_port']).login(
+                    account['email'], 
+                    account['password'],
+                    initial_folder=email['folder']
+                ) as mailbox:
+                    # 使用UID获取邮件
+                    for msg in mailbox.fetch(AND(uid=email['uid'])):
+                        # 解析邮件获取完整内容
+                        try:
+                            # 使用 Python email 标准库解析（正确处理编码）
+                            raw_email = msg.obj.as_bytes()
+                            email_msg = message_from_bytes(raw_email)
+                            
+                            # 获取文本和HTML内容
+                            text_content = None
+                            html_content = None
+                            attachments = []
+                            
+                            if email_msg.is_multipart():
+                                # 多部分邮件
+                                for part in email_msg.walk():
+                                    content_type = part.get_content_type()
+                                    content_disposition = part.get('Content-Disposition', '')
+                                    
+                                    # 处理附件
+                                    if 'attachment' in content_disposition:
+                                        filename = part.get_filename()
+                                        if filename:
+                                            decoded_filename = MailService._decode_mail_header(filename)
+                                            payload = part.get_payload(decode=True)
+                                            attachments.append({
+                                                'filename': decoded_filename,
+                                                'content_type': part.get_content_type(),
+                                                'size': len(payload) if payload else 0,
+                                                'content_id': part.get('Content-ID')
+                                            })
+                                    
+                                    # 处理正文
+                                    elif content_type == 'text/plain' and not text_content:
+                                        payload = part.get_payload(decode=True)
+                                        if payload:
+                                            charset = part.get_content_charset()
+                                            text_content = MailService._try_decode_bytes(payload, charset)
+                                    
+                                    elif content_type == 'text/html' and not html_content:
+                                        payload = part.get_payload(decode=True)
+                                        if payload:
+                                            charset = part.get_content_charset()
+                                            html_content = MailService._try_decode_bytes(payload, charset)
+                            else:
+                                # 单部分邮件
+                                content_type = email_msg.get_content_type()
+                                payload = email_msg.get_payload(decode=True)
+                                
+                                if payload:
+                                    charset = email_msg.get_content_charset()
+                                    decoded_content = MailService._try_decode_bytes(payload, charset)
+                                    
+                                    if content_type == 'text/plain':
+                                        text_content = decoded_content
+                                    elif content_type == 'text/html':
+                                        html_content = decoded_content
+                            
+                            # 如果没有纯文本但有HTML，将HTML转为文本
+                            if not text_content and html_content:
+                                text_content = MailService._html_to_text(html_content)
+                            
+                            # 解析JSON字段
+                            to_emails = json.loads(email['to_emails']) if email['to_emails'] else []
+                            cc_emails = json.loads(email['cc_emails']) if email['cc_emails'] else []
+                            bcc_emails = json.loads(email['bcc_emails']) if email['bcc_emails'] else []
+                            flags = json.loads(email['flags']) if email['flags'] else []
+                            
+                            # 返回完整邮件详情
+                            # 根据实际内容判断是否为HTML邮件
+                            has_html = bool(html_content and html_content.strip())
+                            
+                            return {
+                                'success': True,
+                                'data': {
+                                    'id': email['id'],
+                                    'uid': email['uid'],
+                                    'message_id': email['message_id'],
+                                    'subject': email['subject'],
+                                    'from_email': email['from_email'],
+                                    'from_name': email['from_name'],
+                                    'to_emails': to_emails,
+                                    'cc_emails': cc_emails,
+                                    'bcc_emails': bcc_emails,
+                                    'date': email['date'].isoformat() if email['date'] else None,
+                                    'size': email['size'],
+                                    'flags': flags,
+                                    'has_attachments': email['has_attachments'] == 1,
+                                    'attachment_count': email['attachment_count'],
+                                    'attachments': attachments,
+                                    'text_content': text_content,
+                                    'html_content': html_content,
+                                    'text_preview': email['text_preview'],
+                                    'is_html': has_html,  # 使用实际HTML内容判断
+                                    'folder': email['folder'],
+                                    'synced_at': email['synced_at'].isoformat() if email['synced_at'] else None
+                                }
+                            }
+                        except Exception as e:
+                            print(f"❌ 解析邮件内容失败: {e}")
+                            traceback.print_exc()
+                            # 返回数据库中的基本信息
+                            return {
+                                'success': True,
+                                'data': {
+                                    'id': email['id'],
+                                    'uid': email['uid'],
+                                    'message_id': email['message_id'],
+                                    'subject': email['subject'],
+                                    'from_email': email['from_email'],
+                                    'from_name': email['from_name'],
+                                    'to_emails': json.loads(email['to_emails']) if email['to_emails'] else [],
+                                    'cc_emails': json.loads(email['cc_emails']) if email['cc_emails'] else [],
+                                    'bcc_emails': json.loads(email['bcc_emails']) if email['bcc_emails'] else [],
+                                    'date': email['date'].isoformat() if email['date'] else None,
+                                    'size': email['size'],
+                                    'flags': json.loads(email['flags']) if email['flags'] else [],
+                                    'has_attachments': email['has_attachments'] == 1,
+                                    'attachment_count': email['attachment_count'],
+                                    'attachments': [],
+                                    'text_content': email['text_preview'],
+                                    'html_content': None,
+                                    'text_preview': email['text_preview'],
+                                    'is_html': email['is_html'] == 1,
+                                    'folder': email['folder'],
+                                    'synced_at': email['synced_at'].isoformat() if email['synced_at'] else None
+                                },
+                                'warning': '无法获取完整邮件内容，仅返回预览'
+                            }
+                    
+                    # 如果循环结束没有找到邮件
+                    return {
+                        'success': False,
+                        'error': '在IMAP服务器上未找到该邮件'
+                    }
+                    
+            except Exception as e:
+                print(f"❌ 连接IMAP服务器失败: {e}")
+                traceback.print_exc()
+                return {
+                    'success': False,
+                    'error': f'连接IMAP服务器失败: {str(e)}'
+                }
+                
+        except Exception as e:
+            print(f"❌ 获取邮件详情失败: {e}")
+            traceback.print_exc()
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    @staticmethod
+    def mark_as_read(account_id: int, email_id: int):
+        """
+        标记邮件为已读
+        
+        工作流程：
+        1. 从数据库获取邮件UID
+        2. 连接IMAP服务器，设置\\Seen标记
+        3. 更新数据库中的flags字段
+        
+        Args:
+            account_id: 账户ID
+            email_id: 邮件ID（数据库ID）
+            
+        Returns:
+            {
+                'success': True,
+                'message': '标记成功'
+            }
+        """
+        try:
+            # 1. 从数据库获取邮件信息
+            db = get_db_connection()
+            with db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT uid, folder, flags
+                    FROM email_list
+                    WHERE id = %s AND account_id = %s
+                """, (email_id, account_id))
+                
+                email = cursor.fetchone()
+                
+                if not email:
+                    return {
+                        'success': False,
+                        'error': '邮件不存在'
+                    }
+            
+            # 解析当前flags
+            current_flags = json.loads(email['flags']) if email['flags'] else []
+            
+            # 检查是否已经是已读状态
+            if '\\Seen' in current_flags or '\\SEEN' in current_flags:
+                return {
+                    'success': True,
+                    'message': '邮件已经是已读状态',
+                    'already_read': True
+                }
+            
+            # 2. 获取账户信息并连接IMAP服务器
+            account = MailService._get_account(account_id)
+            if not account:
+                return {
+                    'success': False,
+                    'error': '账户不存在'
+                }
+            
+            # 3. 连接IMAP服务器，设置已读标记
+            try:
+                with MailBox(account['imap_host'], account['imap_port']).login(
+                    account['email'], 
+                    account['password'],
+                    initial_folder=email['folder']
+                ) as mailbox:
+                    # 设置已读标记
+                    mailbox.flag(email['uid'], ['\\Seen'], True)
+                    print(f"✅ IMAP服务器已标记邮件为已读: UID={email['uid']}")
+                    
+                    # 4. 更新数据库中的flags
+                    new_flags = current_flags + ['\\Seen']
+                    
+                    with db.get_cursor() as cursor:
+                        cursor.execute("""
+                            UPDATE email_list
+                            SET flags = %s
+                            WHERE id = %s AND account_id = %s
+                        """, (json.dumps(new_flags), email_id, account_id))
+                    
+                    print(f"✅ 数据库已更新邮件状态: ID={email_id}")
+                    
+                    return {
+                        'success': True,
+                        'message': '标记为已读成功',
+                        'flags': new_flags
+                    }
+                    
+            except Exception as e:
+                print(f"❌ 连接IMAP服务器失败: {e}")
+                traceback.print_exc()
+                return {
+                    'success': False,
+                    'error': f'连接IMAP服务器失败: {str(e)}'
+                }
+                
+        except Exception as e:
+            print(f"❌ 标记邮件为已读失败: {e}")
+            traceback.print_exc()
+            return {
+                'success': False,
+                'error': str(e)
             }
     

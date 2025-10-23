@@ -77,3 +77,49 @@ async def refresh_mail_status(account_id: int, folder: Optional[str] = 'INBOX'):
         raise HTTPException(status_code=400, detail=result.get('error'))
     
     return result
+
+
+@router.get("/email/{account_id}/{email_id}")
+async def get_email_detail(account_id: int, email_id: int):
+    """
+    获取邮件详情（包括完整正文）
+    
+    Args:
+        account_id: 账户ID
+        email_id: 邮件ID（数据库ID）
+        
+    Returns:
+        邮件详情，包含完整的文本和HTML内容
+    """
+    from services.imap.mail_service import MailService
+    
+    # 获取邮件详情
+    result = MailService.get_email_detail(account_id, email_id)
+    
+    if not result.get('success'):
+        raise HTTPException(status_code=404, detail=result.get('error', '邮件不存在'))
+    
+    return result
+
+
+@router.post("/email/{account_id}/{email_id}/mark-read")
+async def mark_email_as_read(account_id: int, email_id: int):
+    """
+    标记邮件为已读
+    
+    Args:
+        account_id: 账户ID
+        email_id: 邮件ID（数据库ID）
+        
+    Returns:
+        标记结果
+    """
+    from services.imap.mail_service import MailService
+    
+    # 标记邮件为已读
+    result = MailService.mark_as_read(account_id, email_id)
+    
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', '标记失败'))
+    
+    return result
