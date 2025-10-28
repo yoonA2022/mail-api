@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS `smtp_accounts` (
   `password` VARCHAR(500) NOT NULL COMMENT '邮箱密码或授权码（建议加密存储）',
   `nickname` VARCHAR(100) DEFAULT NULL COMMENT '账户昵称',
   `sender_name` VARCHAR(100) DEFAULT NULL COMMENT '发件人显示名称',
+  `user_id` INT DEFAULT NULL COMMENT '关联的用户ID（外键关联users表）',
   
   -- SMTP服务器配置
   `platform` VARCHAR(50) NOT NULL COMMENT '邮箱平台（gmail/outlook/qq/163/126等）',
@@ -42,7 +43,11 @@ CREATE TABLE IF NOT EXISTS `smtp_accounts` (
   -- 索引
   UNIQUE KEY `uk_email` (`email`),
   KEY `idx_platform` (`platform`),
-  KEY `idx_status` (`status`)
+  KEY `idx_status` (`status`),
+  KEY `idx_user_id` (`user_id`),
+  
+  -- 外键约束
+  CONSTRAINT `fk_smtp_accounts_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='SMTP账户配置表';
 
 -- ============================================

@@ -8,6 +8,7 @@ from pathlib import Path
 from api.websocket.mail import router as mail_router
 from api.imap.email import router as imap_router
 from api.imap.email_search_api import router as search_router
+from api.rei.rei_api import router as rei_router
 from contextlib import asynccontextmanager
 import asyncio
 
@@ -20,6 +21,12 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
     from services.monitor.monitor_service import MonitorService
+    from services.rei.task_manager import get_task_manager
+    
+    # 启动任务管理器
+    print("🔧 启动任务管理器...")
+    task_manager = get_task_manager()
+    await task_manager.start()
     
     # 在后台启动监控服务
     print("🌐 启动邮件监控服务...")
@@ -30,6 +37,9 @@ async def lifespan(app: FastAPI):
     # 关闭时执行
     print("⏹️ 停止邮件监控服务...")
     await MonitorService.stop()
+    
+    print("⏹️ 停止任务管理器...")
+    await task_manager.stop()
     
     # 等待监控任务结束（最多等待5秒）
     try:
@@ -68,6 +78,7 @@ app.add_middleware(
 app.include_router(mail_router)
 app.include_router(imap_router)
 app.include_router(search_router)
+app.include_router(rei_router)
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
