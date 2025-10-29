@@ -9,6 +9,9 @@ from api.websocket.mail import router as mail_router
 from api.imap.email import router as imap_router
 from api.imap.email_search_api import router as search_router
 from api.rei.rei_api import router as rei_router
+from api.user.login_api import router as login_router
+from api.user.register_api import router as register_router
+from api.user.verification_api import router as verification_router
 from contextlib import asynccontextmanager
 import asyncio
 
@@ -75,9 +78,15 @@ app.add_middleware(
 )
 
 # 注册路由
+# 用户相关路由
+app.include_router(login_router)
+app.include_router(register_router)
+app.include_router(verification_router)
+# 邮件相关路由
 app.include_router(mail_router)
 app.include_router(imap_router)
 app.include_router(search_router)
+# REI相关路由
 app.include_router(rei_router)
 
 @app.get("/", response_class=HTMLResponse)

@@ -64,19 +64,19 @@ CREATE TABLE IF NOT EXISTS `users` (
 -- 管理员账户
 INSERT INTO `users` (`username`, `email`, `password`, `nickname`, `role`, `status`, `is_verified`) 
 VALUES 
-('admin', 'admin@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzpLaEiUM2', '系统管理员', 'admin', 1, 1);
+('admin', 'admin@example.com', '$2b$12$fF/vYSdmKJXKTcKc9GWrVeD4iTNYfA/6snQKSinlsyIZeiilTFV/G', '系统管理员', 'admin', 1, 1);
 -- 默认密码: admin123 (请在生产环境中修改)
 
 -- 普通用户示例
 INSERT INTO `users` (`username`, `email`, `password`, `nickname`, `role`, `status`, `is_verified`) 
 VALUES 
-('user001', 'user001@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzpLaEiUM2', '测试用户', 'user', 1, 1);
+('user001', 'user001@example.com', '$2b$12$g1RgsbwexsY6FrwU/W5AnOME2TGayRuryAmL56gHiz/9nhx/Fq1rm', '测试用户', 'user', 1, 1);
 -- 默认密码: user123
 
 -- VIP用户示例
 INSERT INTO `users` (`username`, `email`, `password`, `nickname`, `role`, `status`, `is_verified`) 
 VALUES 
-('vip001', 'vip001@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzpLaEiUM2', 'VIP用户', 'vip', 1, 1);
+('vip001', 'vip001@example.com', '$2b$12$AVmPtroMn6v.O7sJ2DN29eO7rFGOueGL/G8fE0l0enlO3enPnLWaa', 'VIP用户', 'vip', 1, 1);
 -- 默认密码: vip123
 
 -- ============================================
