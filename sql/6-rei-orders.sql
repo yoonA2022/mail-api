@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS `rei_orders` (
     -- ========================================
     -- 系统字段
     -- ========================================
+    `user_id` INT DEFAULT NULL COMMENT '关联的用户ID（外键关联users表）',
     `account_id` INT DEFAULT NULL COMMENT '关联的IMAP账户ID（可选）',
     `email_id` INT DEFAULT NULL COMMENT '关联的邮件ID（可选）',
     `remark` TEXT DEFAULT NULL COMMENT '备注信息',
@@ -125,9 +126,11 @@ CREATE TABLE IF NOT EXISTS `rei_orders` (
     INDEX `idx_order_date` (`order_date`) COMMENT '订单日期索引',
     INDEX `idx_is_complete` (`is_complete`) COMMENT '完成状态索引',
     INDEX `idx_order_header_key` (`order_header_key`) COMMENT '订单头标识索引',
+    INDEX `idx_user_id` (`user_id`) COMMENT '用户ID索引',
     INDEX `idx_account_id` (`account_id`) COMMENT '账户ID索引',
     INDEX `idx_created_at` (`created_at`) COMMENT '创建时间索引',
     
     -- 外键约束（可选）
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,
     FOREIGN KEY (`account_id`) REFERENCES `imap_accounts`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='REI订单管理表（完整版-基于API数据结构）';

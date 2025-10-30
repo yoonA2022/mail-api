@@ -22,6 +22,7 @@ class ReiOrderService:
     @staticmethod
     def save_order(
         order_data: Dict[str, Any],
+        user_id: Optional[int] = None,
         account_id: Optional[int] = None,
         email_id: Optional[int] = None,
         email_info: Optional[Dict[str, Any]] = None
@@ -31,6 +32,7 @@ class ReiOrderService:
         
         Args:
             order_data: REI API 返回的完整订单数据
+            user_id: 关联的用户ID（可选）
             account_id: 关联的邮箱账户ID（可选）
             email_id: 关联的邮件ID（可选）
             email_info: 从邮件中提取的额外信息（如账单地址、发货地址）
@@ -57,6 +59,7 @@ class ReiOrderService:
             
             # 准备数据
             save_data = ReiOrderService._prepare_order_data(order_data, email_info)
+            save_data['user_id'] = user_id
             save_data['account_id'] = account_id
             save_data['email_id'] = email_id
             
@@ -191,7 +194,7 @@ class ReiOrderService:
                 retail_store_info, total_order_discount, total_discounted_order_amount,
                 total_tax_amount, total_shipping_amount, order_total, amount_paid,
                 fulfillment_groups, tenders, fees, shipping_charges, discounts,
-                billing_address, account_id, email_id
+                billing_address, user_id, account_id, email_id
             ) VALUES (
                 %(order_id)s, %(is_guest)s, %(is_released)s, %(order_type)s, %(order_date)s,
                 %(is_complete)s, %(est_rewards_earned)s, %(has_dividend_refund)s,
@@ -199,7 +202,7 @@ class ReiOrderService:
                 %(retail_store_info)s, %(total_order_discount)s, %(total_discounted_order_amount)s,
                 %(total_tax_amount)s, %(total_shipping_amount)s, %(order_total)s, %(amount_paid)s,
                 %(fulfillment_groups)s, %(tenders)s, %(fees)s, %(shipping_charges)s, %(discounts)s,
-                %(billing_address)s, %(account_id)s, %(email_id)s
+                %(billing_address)s, %(user_id)s, %(account_id)s, %(email_id)s
             )
         """
         cursor.execute(sql, data)
@@ -210,7 +213,7 @@ class ReiOrderService:
         """更新现有订单（智能保留原有数据）"""
         # 先查询现有数据
         cursor.execute(
-            "SELECT order_date, billing_address FROM rei_orders WHERE id = %s",
+            "SELECT order_date, billing_address, user_id FROM rei_orders WHERE id = %s",
             (db_id,)
         )
         existing = cursor.fetchone()
@@ -224,6 +227,10 @@ class ReiOrderService:
             # 如果新数据的 billing_address 为 None，保留原有值
             if data.get('billing_address') is None and existing.get('billing_address'):
                 data['billing_address'] = existing['billing_address']
+            
+            # 如果新数据的 user_id 为 None，保留原有值
+            if data.get('user_id') is None and existing.get('user_id'):
+                data['user_id'] = existing['user_id']
         
         sql = """
             UPDATE rei_orders SET
@@ -250,6 +257,7 @@ class ReiOrderService:
                 shipping_charges = %(shipping_charges)s,
                 discounts = %(discounts)s,
                 billing_address = %(billing_address)s,
+                user_id = %(user_id)s,
                 updated_at = NOW()
             WHERE id = %(id)s
         """

@@ -385,9 +385,10 @@ class ReiOrderSyncServiceOptimized:
                                 'error': api_result.get('error', 'API调用失败')
                             }
                         
-                        # 保存到数据库
+                        # 保存到数据库（从原订单数据中获取 user_id）
                         save_result = ReiOrderDataService.save_api_order_data(
                             order_data=api_result['order_data'],
+                            user_id=order.get('user_id'),
                             account_id=account_id,
                             email_id=email_id
                         )
@@ -567,6 +568,7 @@ class ReiOrderSyncServiceOptimized:
             
             save_result = ReiOrderService.save_order(
                 order_data=order_detail,
+                user_id=order_data.get('user_id'),
                 account_id=order_data.get('account_id'),
                 email_id=order_data.get('email_id')
             )

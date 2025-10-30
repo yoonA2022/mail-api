@@ -22,7 +22,8 @@ class ReiOrderDataService:
     def _save_email_parsed_order_sync(
         email_info: Dict[str, Any],
         account_id: int,
-        email_id: int
+        email_id: int,
+        user_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         保存从邮件解析的基本订单信息到数据库
@@ -31,6 +32,7 @@ class ReiOrderDataService:
             email_info: 从邮件HTML解析的订单信息
             account_id: 邮箱账户ID
             email_id: 邮件ID
+            user_id: 用户ID（可选，如果不提供则从 account_id 查询）
             
         Returns:
             {
@@ -50,6 +52,14 @@ class ReiOrderDataService:
             
             db = get_db_connection()
             
+            # 如果没有提供 user_id，从 account_id 查询
+            if user_id is None and account_id:
+                with db.get_cursor() as cursor:
+                    cursor.execute("SELECT user_id FROM imap_accounts WHERE id = %s", (account_id,))
+                    account = cursor.fetchone()
+                    if account:
+                        user_id = account.get('user_id')
+            
             # 检查订单是否已存在
             with db.get_cursor() as cursor:
                 cursor.execute("SELECT id FROM rei_orders WHERE order_id = %s", (order_id,))
@@ -58,6 +68,7 @@ class ReiOrderDataService:
             # 准备基本数据
             prepared_data = ReiOrderDataService._prepare_email_order_data(
                 email_info,
+                user_id,
                 account_id,
                 email_id
             )
@@ -101,7 +112,8 @@ class ReiOrderDataService:
     async def save_email_parsed_order(
         email_info: Dict[str, Any],
         account_id: int,
-        email_id: int
+        email_id: int,
+        user_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         异步保存从邮件解析的基本订单信息到数据库
@@ -110,6 +122,7 @@ class ReiOrderDataService:
             email_info: 从邮件HTML解析的订单信息
             account_id: 邮箱账户ID
             email_id: 邮件ID
+            user_id: 用户ID（可选，如果不提供则从 account_id 查询）
             
         Returns:
             保存结果
@@ -120,12 +133,14 @@ class ReiOrderDataService:
             ReiOrderDataService._save_email_parsed_order_sync,
             email_info,
             account_id,
-            email_id
+            email_id,
+            user_id
         )
     
     @staticmethod
     def save_api_order_data(
         order_data: Dict[str, Any],
+        user_id: Optional[int] = None,
         account_id: Optional[int] = None,
         email_id: Optional[int] = None
     ) -> Dict[str, Any]:
@@ -134,6 +149,7 @@ class ReiOrderDataService:
         
         Args:
             order_data: REI API 返回的订单数据（完整 JSON）
+            user_id: 关联的用户ID（可选）
             account_id: 关联的邮箱账户ID（可选）
             email_id: 关联的邮件ID（可选）
             
@@ -163,6 +179,7 @@ class ReiOrderDataService:
             # 准备数据
             prepared_data = ReiOrderDataService._prepare_order_data(
                 order_data, 
+                user_id,
                 account_id, 
                 email_id
             )
@@ -205,6 +222,7 @@ class ReiOrderDataService:
     @staticmethod
     def _prepare_order_data(
         order_data: Dict[str, Any],
+        user_id: Optional[int],
         account_id: Optional[int],
         email_id: Optional[int]
     ) -> Dict[str, Any]:
@@ -213,6 +231,7 @@ class ReiOrderDataService:
         
         Args:
             order_data: API 返回的原始数据
+            user_id: 用户ID
             account_id: 账户ID
             email_id: 邮件ID
             
@@ -275,6 +294,7 @@ class ReiOrderDataService:
             'billing_address': json.dumps(order_data.get('billingAddress')) if order_data.get('billingAddress') else None,
             
             # 关联信息
+            'user_id': user_id,
             'account_id': account_id,
             'email_id': email_id
         }
@@ -298,7 +318,7 @@ class ReiOrderDataService:
                 retail_store_info, total_order_discount, total_discounted_order_amount,
                 total_tax_amount, total_shipping_amount, order_total, amount_paid,
                 fulfillment_groups, tenders, fees, shipping_charges, discounts,
-                billing_address, account_id, email_id
+                billing_address, user_id, account_id, email_id
             ) VALUES (
                 %s, %s, %s, %s, %s,
                 %s, %s, %s,
@@ -306,7 +326,7 @@ class ReiOrderDataService:
                 %s, %s, %s,
                 %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
-                %s, %s, %s
+                %s, %s, %s, %s
             )
         """
         
@@ -321,7 +341,7 @@ class ReiOrderDataService:
             data['order_total'], data['amount_paid'],
             data['fulfillment_groups'], data['tenders'], data['fees'], 
             data['shipping_charges'], data['discounts'],
-            data['billing_address'], data['account_id'], data['email_id']
+            data['billing_address'], data.get('user_id'), data['account_id'], data['email_id']
         ))
     
     @staticmethod
@@ -331,6 +351,7 @@ class ReiOrderDataService:
         
         规则：
         - 如果 API 返回的 billing_address 为 None，保留原有账单地址
+        - 如果传入的 user_id 为 None，保留原有用户ID
         - 如果传入的 account_id 为 None，保留原有账户ID
         - 如果传入的 email_id 为 None，保留原有邮件ID
         
@@ -341,7 +362,7 @@ class ReiOrderDataService:
         """
         # 先查询现有数据
         cursor.execute(
-            "SELECT billing_address, account_id, email_id FROM rei_orders WHERE order_id = %s",
+            "SELECT billing_address, user_id, account_id, email_id FROM rei_orders WHERE order_id = %s",
             (order_id,)
         )
         existing = cursor.fetchone()
@@ -351,6 +372,10 @@ class ReiOrderDataService:
             # 如果新数据的 billing_address 为 None，保留原有值
             if data['billing_address'] is None and existing['billing_address']:
                 data['billing_address'] = existing['billing_address']
+            
+            # 如果新数据的 user_id 为 None，保留原有值
+            if data.get('user_id') is None and existing.get('user_id'):
+                data['user_id'] = existing['user_id']
             
             # 如果新数据的 account_id 为 None，保留原有值
             if data['account_id'] is None and existing['account_id']:
@@ -385,6 +410,7 @@ class ReiOrderDataService:
                 shipping_charges = %s,
                 discounts = %s,
                 billing_address = %s,
+                user_id = %s,
                 account_id = %s,
                 email_id = %s,
                 updated_at = NOW()
@@ -402,7 +428,7 @@ class ReiOrderDataService:
             data['order_total'], data['amount_paid'],
             data['fulfillment_groups'], data['tenders'], data['fees'], 
             data['shipping_charges'], data['discounts'],
-            data['billing_address'], data['account_id'], data['email_id'],
+            data['billing_address'], data.get('user_id'), data['account_id'], data['email_id'],
             order_id
         ))
     
@@ -484,6 +510,7 @@ class ReiOrderDataService:
     @staticmethod
     def _prepare_email_order_data(
         email_info: Dict[str, Any],
+        user_id: Optional[int],
         account_id: int,
         email_id: int
     ) -> Dict[str, Any]:
@@ -492,6 +519,7 @@ class ReiOrderDataService:
         
         Args:
             email_info: 邮件解析信息
+            user_id: 用户ID
             account_id: 账户ID
             email_id: 邮件ID
             
@@ -542,6 +570,7 @@ class ReiOrderDataService:
             'fulfillment_groups': None,  # 邮件解析时不保存，留给API数据
             'tracking_info': json.dumps(tracking_info_data) if tracking_info_data else None,  # 保存邮件解析的配送信息
             'tracking_url': email_info.get('tracking_url'),  # 物流追踪URL
+            'user_id': user_id,
             'account_id': account_id,
             'email_id': email_id
         }
@@ -563,13 +592,13 @@ class ReiOrderDataService:
                 total_tax_amount, total_shipping_amount,
                 billing_address, fulfillment_groups,
                 tracking_info, tracking_url,
-                account_id, email_id
+                user_id, account_id, email_id
             ) VALUES (
                 %s, %s, %s, %s,
                 %s, %s,
                 %s, %s,
                 %s, %s,
-                %s, %s
+                %s, %s, %s
             )
         """
         
@@ -578,7 +607,7 @@ class ReiOrderDataService:
             data['total_tax_amount'], data['total_shipping_amount'],
             data['billing_address'], data['fulfillment_groups'],
             data['tracking_info'], data['tracking_url'],
-            data['account_id'], data['email_id']
+            data['user_id'], data['account_id'], data['email_id']
         ))
     
     @staticmethod
@@ -596,6 +625,7 @@ class ReiOrderDataService:
         # fulfillment_groups: 不更新（留给API数据）
         sql = """
             UPDATE rei_orders SET
+                user_id = COALESCE(user_id, %s),
                 account_id = COALESCE(account_id, %s),
                 email_id = COALESCE(email_id, %s),
                 billing_address = COALESCE(billing_address, %s),
@@ -606,7 +636,7 @@ class ReiOrderDataService:
         """
         
         cursor.execute(sql, (
-            data['account_id'], data['email_id'],
+            data['user_id'], data['account_id'], data['email_id'],
             data['billing_address'],
             data['tracking_info'], data['tracking_url'],
             order_id

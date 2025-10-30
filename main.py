@@ -8,6 +8,7 @@ from pathlib import Path
 from api.websocket.mail import router as mail_router
 from api.imap.email import router as imap_router
 from api.imap.email_search_api import router as search_router
+from api.mail.imap.imap_account_api import router as imap_account_router
 from api.rei.rei_api import router as rei_router
 from api.user.login_api import router as login_router
 from api.user.register_api import router as register_router
@@ -86,6 +87,7 @@ app.include_router(verification_router)
 app.include_router(mail_router)
 app.include_router(imap_router)
 app.include_router(search_router)
+app.include_router(imap_account_router)
 # REI相关路由
 app.include_router(rei_router)
 

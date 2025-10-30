@@ -14,9 +14,10 @@ router = APIRouter(prefix="/api/rei", tags=["REI订单"])
 
 @router.get("/orders")
 async def get_orders(
+    user_id: Optional[int] = Query(None, description="用户ID"),
     account_id: Optional[int] = Query(None, description="邮箱账户ID"),
     page: int = Query(1, ge=1, description="页码"),
-    page_size: int = Query(10, ge=1, le=2000, description="每页数量"),
+    page_size: int = Query(10, ge=1, le=10000, description="每页数量（最大10000）"),
     status: Optional[str] = Query(None, description="订单状态筛选"),
     start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)")
@@ -25,6 +26,7 @@ async def get_orders(
     获取REI订单列表
     
     参数:
+    - user_id: 用户ID（可选，用于过滤特定用户的订单）
     - account_id: 邮箱账户ID（可选）
     - page: 页码，从1开始
     - page_size: 每页数量，默认10条
@@ -47,6 +49,11 @@ async def get_orders(
         # 构建查询条件
         where_conditions = []
         params = []
+        
+        # 添加 user_id 过滤
+        if user_id is not None:
+            where_conditions.append("user_id = %s")
+            params.append(user_id)
         
         if account_id is not None:
             where_conditions.append("account_id = %s")
@@ -640,3 +647,88 @@ async def cancel_task(task_id: str):
     except Exception as e:
         print(f"❌ 取消任务失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"取消任务失败: {str(e)}")
+
+
+@router.delete("/orders/{order_id}")
+async def delete_order(order_id: str):
+    """
+    删除单个订单
+    
+    参数:
+    - order_id: 订单号
+    
+    返回:
+    - 删除结果
+    """
+    try:
+        db = get_db_connection()
+        
+        # 检查订单是否存在并删除
+        with db.get_cursor() as cursor:
+            cursor.execute("SELECT id FROM rei_orders WHERE order_id = %s", (order_id,))
+            order = cursor.fetchone()
+            
+            if not order:
+                raise HTTPException(status_code=404, detail=f"订单 {order_id} 不存在")
+            
+            # 删除订单
+            cursor.execute("DELETE FROM rei_orders WHERE order_id = %s", (order_id,))
+        
+        return {
+            "success": True,
+            "message": f"订单 {order_id} 已删除"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ 删除订单失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除订单失败: {str(e)}")
+
+
+@router.post("/orders/bulk-delete")
+async def bulk_delete_orders(order_ids: List[str]):
+    """
+    批量删除订单
+    
+    参数:
+    - order_ids: 订单号列表
+    
+    返回:
+    - 删除结果统计
+    """
+    try:
+        if not order_ids:
+            raise HTTPException(status_code=400, detail="订单列表不能为空")
+        
+        db = get_db_connection()
+        deleted_count = 0
+        failed_orders = []
+        
+        # 在一个事务中批量删除
+        with db.get_cursor() as cursor:
+            for order_id in order_ids:
+                try:
+                    cursor.execute("DELETE FROM rei_orders WHERE order_id = %s", (order_id,))
+                    if cursor.rowcount > 0:
+                        deleted_count += 1
+                    else:
+                        failed_orders.append({"order_id": order_id, "reason": "订单不存在"})
+                except Exception as e:
+                    failed_orders.append({"order_id": order_id, "reason": str(e)})
+        
+        return {
+            "success": True,
+            "message": f"成功删除 {deleted_count} 个订单",
+            "data": {
+                "deleted_count": deleted_count,
+                "failed_count": len(failed_orders),
+                "failed_orders": failed_orders
+            }
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ 批量删除订单失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"批量删除订单失败: {str(e)}")

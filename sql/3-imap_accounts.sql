@@ -7,10 +7,10 @@ CREATE TABLE IF NOT EXISTS `imap_accounts` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
   
   -- 账户基本信息
+  `user_id` INT DEFAULT NULL COMMENT '关联的用户ID（外键关联users表）',
   `email` VARCHAR(255) NOT NULL COMMENT '邮箱地址',
   `password` VARCHAR(500) NOT NULL COMMENT '邮箱密码或授权码（建议加密存储）',
   `nickname` VARCHAR(100) DEFAULT NULL COMMENT '账户昵称',
-  `user_id` INT DEFAULT NULL COMMENT '关联的用户ID（外键关联users表）',
   
   -- IMAP服务器配置
   `platform` VARCHAR(50) NOT NULL COMMENT '邮箱平台（gmail/outlook/qq/163/126等）',
@@ -48,31 +48,31 @@ CREATE TABLE IF NOT EXISTS `imap_accounts` (
 -- ============================================
 
 -- Gmail 示例
-INSERT INTO `imap_accounts` (`email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
+INSERT INTO `imap_accounts` (`user_id`, `email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
 VALUES 
-('example@gmail.com', 'your_app_password', 'Gmail账户', 'gmail', 'imap.gmail.com', 993, 1, 1);
+(1,'example@gmail.com', 'your_app_password', 'Gmail账户', 'gmail', 'imap.gmail.com', 993, 1, 1);
 
 -- QQ邮箱 示例
-INSERT INTO `imap_accounts` (`email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
+INSERT INTO `imap_accounts` (`user_id`, `email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
 VALUES 
-('example@qq.com', 'your_auth_code', 'QQ邮箱', 'qq', 'imap.qq.com', 993, 1, 0);
+(1,'example@qq.com', 'your_auth_code', 'QQ邮箱', 'qq', 'imap.qq.com', 993, 1, 0);
 
 -- 163邮箱 示例
-INSERT INTO `imap_accounts` (`email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
+INSERT INTO `imap_accounts` (`user_id`, `email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
 VALUES 
-('example@163.com', 'your_auth_code', '163邮箱', '163', 'imap.163.com', 993, 1, 0);
+(1,'example@163.com', 'your_auth_code', '163邮箱', '163', 'imap.163.com', 993, 1, 0);
 
 -- Outlook 示例
-INSERT INTO `imap_accounts` (`email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
+INSERT INTO `imap_accounts` (`user_id`, `email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
 VALUES 
-('example@outlook.com', 'your_password', 'Outlook账户', 'outlook', 'outlook.office365.com', 993, 1, 1);
+(1,'example@outlook.com', 'your_password', 'Outlook账户', 'outlook', 'outlook.office365.com', 993, 1, 1);
 
 -- 126邮箱 示例
-INSERT INTO `imap_accounts` (`email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
+INSERT INTO `imap_accounts` (`user_id`, `email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
 VALUES 
-('hi@example.com', 'your_auth_code', '126邮箱', 'imap', 'example.com', 993, 1, 0);
+(1,'hi@example.com', 'your_auth_code', '126邮箱', 'imap', 'example.com', 993, 1, 0);
 
 -- 邮箱示例
-INSERT INTO `imap_accounts` (`email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
+INSERT INTO `imap_accounts` (`user_id`, `email`, `password`, `nickname`, `platform`, `imap_host`, `imap_port`, `use_ssl`, `status`) 
 VALUES 
-('example@126.com', 'your_auth_code', '126邮箱', '126', 'imap.126.com', 993, 1, 0);
+(1,'example@126.com', 'your_auth_code', '126邮箱', '126', 'imap.126.com', 993, 1, 0);

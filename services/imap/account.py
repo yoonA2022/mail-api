@@ -11,12 +11,13 @@ class ImapAccountService:
     """IMAP 账户服务类"""
     
     @staticmethod
-    def get_all_accounts(include_password: bool = False) -> List[Dict]:
+    def get_all_accounts(include_password: bool = False, user_id: Optional[int] = None) -> List[Dict]:
         """
-        获取所有 IMAP 账户列表
+        获取 IMAP 账户列表
         
         Args:
             include_password: 是否包含密码字段，默认 False
+            user_id: 可选，用户ID，如果提供则只返回该用户的账户
             
         Returns:
             账户列表
@@ -26,30 +27,36 @@ class ImapAccountService:
             with db.get_cursor() as cursor:
                 # 根据是否需要密码选择字段
                 if include_password:
-                    cursor.execute("""
+                    base_sql = """
                         SELECT 
-                            id, email, password, nickname, platform, 
+                            id, email, password, nickname, user_id, platform, 
                             imap_host, imap_port, use_ssl, status, 
                             auto_sync, sync_interval, last_sync_time,
                             folder, max_fetch, remark, created_at, updated_at
                         FROM imap_accounts
-                        ORDER BY id ASC
-                    """)
+                    """
                 else:
-                    cursor.execute("""
+                    base_sql = """
                         SELECT 
-                            id, email, nickname, platform, 
+                            id, email, nickname, user_id, platform, 
                             imap_host, imap_port, use_ssl, status, 
                             auto_sync, sync_interval, last_sync_time,
                             folder, max_fetch, remark, created_at, updated_at
                         FROM imap_accounts
-                        ORDER BY id ASC
-                    """)
+                    """
+                
+                # 添加 WHERE 条件
+                if user_id:
+                    sql = base_sql + " WHERE user_id = %s ORDER BY id ASC"
+                    cursor.execute(sql, (user_id,))
+                else:
+                    sql = base_sql + " ORDER BY id ASC"
+                    cursor.execute(sql)
                 
                 accounts = cursor.fetchall()
                 return accounts if accounts else []
         except Exception as e:
-            print(f"❌ 获取账户列表失败: {e}")
+            print(f"获取账户列表失败: {e}")
             return []
     
     @staticmethod
