@@ -95,3 +95,13 @@ class DatabaseConnection:
 def get_db_connection() -> DatabaseConnection:
     """获取数据库连接实例"""
     return DatabaseConnection()
+
+
+def get_db():
+    """FastAPI 依赖函数：获取数据库连接"""
+    db_connection = get_db_connection()
+    try:
+        yield db_connection
+    finally:
+        # 连接会在上下文管理器中自动关闭
+        pass

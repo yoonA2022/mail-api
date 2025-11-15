@@ -2,7 +2,9 @@ from fastapi import FastAPI
 import uvicorn
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from config.settings import get_settings
+import os
 from datetime import datetime
 from pathlib import Path
 from api.websocket.mail import router as mail_router
@@ -13,6 +15,7 @@ from api.rei.rei_api import router as rei_router
 from api.user.login_api import router as login_router
 from api.user.register_api import router as register_router
 from api.user.verification_api import router as verification_router
+from api.cron.cron_task import router as cron_router
 from contextlib import asynccontextmanager
 import asyncio
 
@@ -63,19 +66,46 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 配置CORS - 允许前端跨域访问
+# 配置CORS - 允许前端跨域访问（从环境变量读取）
+def get_cors_origins():
+    """从环境变量获取CORS允许的域名列表"""
+    cors_origins = os.getenv("CORS_ORIGINS", "")
+    if cors_origins:
+        return [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+    else:
+        # 默认开发环境配置
+        return [
+            "http://127.0.0.1:5500",
+            "http://localhost:5500", 
+            "http://192.168.1.4:5500",
+            "http://localhost:3000",
+            "http://192.168.1.4:3000",
+        ]
+
+def get_cors_credentials():
+    """从环境变量获取是否允许凭据"""
+    return os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() == "true"
+
+def get_cors_methods():
+    """从环境变量获取允许的HTTP方法"""
+    methods = os.getenv("CORS_ALLOW_METHODS", "*")
+    if methods == "*":
+        return ["*"]
+    return [method.strip() for method in methods.split(",") if method.strip()]
+
+def get_cors_headers():
+    """从环境变量获取允许的请求头"""
+    headers = os.getenv("CORS_ALLOW_HEADERS", "*")
+    if headers == "*":
+        return ["*"]
+    return [header.strip() for header in headers.split(",") if header.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:5500",
-        "http://localhost:5500",
-        "http://192.168.1.4:5500",
-        "http://localhost:3000",
-        "http://192.168.1.4:3000",
-        ],  # 允许的前端地址
-    allow_credentials=True,
-    allow_methods=["*"],  # 允许所有HTTP方法
-    allow_headers=["*"],  # 允许所有请求头
+    allow_origins=get_cors_origins(),
+    allow_credentials=get_cors_credentials(),
+    allow_methods=get_cors_methods(),
+    allow_headers=get_cors_headers(),
 )
 
 # 注册路由
@@ -90,6 +120,11 @@ app.include_router(search_router)
 app.include_router(imap_account_router)
 # REI相关路由
 app.include_router(rei_router)
+# 定时任务相关路由
+app.include_router(cron_router)
+
+# 配置静态文件服务
+app.mount("/assets", StaticFiles(directory="templates/assets"), name="assets")
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -111,6 +146,7 @@ if __name__ == "__main__":
     print(f"📅 启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"🌐 访问地址: http://localhost:{settings.app_port}")
     print(f"📚 API文档: http://localhost:{settings.app_port}/docs")
+    print(f"📖 ReDoc: http://localhost:{settings.app_port}/redoc")
     print(f"🌐 WebSocket: ws://localhost:{settings.app_port}")
     print("="*60 + "\n")
     
