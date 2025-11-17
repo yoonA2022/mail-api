@@ -1,6 +1,8 @@
 """
 定时任务API路由
 """
+import logging
+import traceback
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from config.database import get_db, DatabaseConnection
@@ -10,6 +12,8 @@ from models.cron.cron_task import (
 )
 from services.cron.cron_task_service import CronTaskService
 
+# 配置日志
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/cron", tags=["定时任务管理"])
 
@@ -52,6 +56,28 @@ async def get_cron_tasks(
         )
 
 
+@router.get("/tasks/deleted")
+async def get_deleted_tasks(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    service: CronTaskService = Depends(get_cron_service)
+):
+    """
+    获取已删除的任务列表（回收站）
+    """
+    try:
+        logger.info(f"🗑️ 获取回收站任务列表: page={page}, page_size={page_size}")
+        result = service.get_deleted_tasks(page=page, page_size=page_size)
+        logger.info(f"✅ 回收站任务列表获取成功: 共{result['total']}条")
+        return result
+    except Exception as e:
+        logger.error(f"❌ 获取回收站任务失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取回收站任务失败: {str(e)}"
+        )
+
+
 @router.get("/tasks/{task_id}", response_model=CronTask)
 async def get_cron_task(
     task_id: int,
@@ -78,11 +104,22 @@ async def create_cron_task(
     创建新的定时任务
     """
     try:
+        logger.info(f"📝 开始创建定时任务: {task_data.name}")
+        logger.debug(f"任务数据: {task_data.model_dump()}")
+        
         # TODO: 从认证中获取当前用户ID
         created_by = 1  # 临时使用管理员ID
         
-        return service.create_task(task_data, created_by)
+        result = service.create_task(task_data, created_by)
+        logger.info(f"✅ 任务创建成功: ID={result.id}, Name={result.name}")
+        return result
+    except HTTPException as he:
+        logger.error(f"❌ HTTP异常: {he.detail}")
+        raise
     except Exception as e:
+        logger.error(f"❌ 创建定时任务失败: {str(e)}")
+        logger.error(f"错误类型: {type(e).__name__}")
+        logger.error(f"错误堆栈:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"创建定时任务失败: {str(e)}"
@@ -124,19 +161,34 @@ async def delete_cron_task(
     service: CronTaskService = Depends(get_cron_service)
 ):
     """
-    删除定时任务
+    删除定时任务（软删除）
     """
     try:
+        logger.info(f"🗑️ 请求删除任务: task_id={task_id}")
+        
+        # 先获取任务信息用于日志
+        task = service.get_task_by_id(task_id)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="定时任务不存在"
+            )
+        
+        # 执行删除
         success = service.delete_task(task_id)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="定时任务不存在"
             )
-        return {"message": "定时任务删除成功"}
+        
+        logger.info(f"✅ 任务删除成功: ID={task_id}, Name={task.name}")
+        return {"message": f"定时任务 '{task.name}' 删除成功", "success": True}
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"❌ 删除定时任务失败: {str(e)}")
+        logger.error(f"错误堆栈:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"删除定时任务失败: {str(e)}"
@@ -169,6 +221,39 @@ async def toggle_cron_task_status(
         )
 
 
+@router.patch("/tasks/{task_id}/activate")
+async def toggle_task_activation(
+    task_id: int,
+    is_active: bool,
+    service: CronTaskService = Depends(get_cron_service)
+):
+    """
+    切换任务激活状态
+    - is_active = True: 激活任务，status自动设为enabled
+    - is_active = False: 取消激活，status自动设为disabled（草稿状态）
+    """
+    try:
+        logger.info(f"🔄 切换任务激活状态: task_id={task_id}, is_active={is_active}")
+        
+        result = service.toggle_activation(task_id, is_active)
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="定时任务不存在"
+            )
+        
+        logger.info(f"✅ 激活状态切换成功: {result.name}")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 切换激活状态失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"切换激活状态失败: {str(e)}"
+        )
+
+
 @router.post("/tasks/{task_id}/run")
 async def run_cron_task_now(
     task_id: int,
@@ -196,6 +281,66 @@ async def run_cron_task_now(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"执行任务失败: {str(e)}"
+        )
+
+
+@router.post("/tasks/{task_id}/restore")
+async def restore_deleted_task(
+    task_id: int,
+    service: CronTaskService = Depends(get_cron_service)
+):
+    """
+    恢复已删除的任务
+    """
+    try:
+        logger.info(f"♻️ 请求恢复任务: task_id={task_id}")
+        
+        task = service.restore_task(task_id)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="任务不存在或未被删除"
+            )
+        
+        logger.info(f"✅ 任务恢复成功: ID={task_id}, Name={task.name}")
+        return {"message": f"任务 '{task.name}' 已恢复", "success": True, "task": task}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 恢复任务失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"恢复任务失败: {str(e)}"
+        )
+
+
+@router.delete("/tasks/{task_id}/permanent")
+async def permanent_delete_task(
+    task_id: int,
+    service: CronTaskService = Depends(get_cron_service)
+):
+    """
+    彻底删除任务（物理删除，不可恢复）
+    """
+    try:
+        logger.info(f"💀 请求彻底删除任务: task_id={task_id}")
+        
+        success = service.permanent_delete_task(task_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="任务不存在或未被软删除"
+            )
+        
+        logger.info(f"✅ 任务彻底删除成功: ID={task_id}")
+        return {"message": "任务已彻底删除", "success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 彻底删除任务失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"彻底删除任务失败: {str(e)}"
         )
 
 

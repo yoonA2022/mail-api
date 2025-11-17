@@ -2,6 +2,8 @@
 定时任务服务层
 """
 import json
+import logging
+import traceback
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
 from fastapi import HTTPException
@@ -11,6 +13,9 @@ from models.cron.cron_task import (
     CronTaskLog, CronTaskListResponse, CronTaskStatsResponse,
     TaskStatus, ExecutionStatus
 )
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 
 class CronTaskService:
@@ -147,13 +152,136 @@ class CronTaskService:
     
     def get_task_by_id(self, task_id: int) -> Optional[CronTask]:
         """根据ID获取定时任务"""
-        # TODO: 实现获取单个任务详情
-        raise HTTPException(status_code=501, detail="功能暂未实现")
+        try:
+            logger.info(f"🔍 查询任务ID: {task_id}")
+            
+            query_sql = """
+            SELECT 
+                id, name, description, type, cron_expression, timezone,
+                command, parameters, working_directory, environment_vars,
+                status, is_active, run_count, success_count, error_count,
+                last_run_at, last_success_at, last_error_at, next_run_at,
+                timeout_seconds, max_retries, retry_interval,
+                notify_on_success, notify_on_failure, notification_emails,
+                created_by, updated_by, priority, tags, remark,
+                created_at, updated_at, deleted_at
+            FROM cron_tasks
+            WHERE id = %s AND deleted_at IS NULL
+            """
+            
+            with self.db.get_cursor() as cursor:
+                cursor.execute(query_sql, (task_id,))
+                row = cursor.fetchone()
+            
+            if not row:
+                logger.warning(f"⚠️ 任务不存在: ID={task_id}")
+                return None
+            
+            # 解析JSON字段
+            task_data = dict(row)
+            if task_data.get('parameters'):
+                task_data['parameters'] = json.loads(task_data['parameters'])
+            if task_data.get('environment_vars'):
+                task_data['environment_vars'] = json.loads(task_data['environment_vars'])
+            if task_data.get('notification_emails'):
+                task_data['notification_emails'] = json.loads(task_data['notification_emails'])
+            if task_data.get('tags'):
+                task_data['tags'] = json.loads(task_data['tags'])
+            
+            logger.info(f"✅ 任务查询成功: {task_data['name']}")
+            return CronTask(**task_data)
+            
+        except Exception as e:
+            logger.error(f"❌ 查询任务失败: {str(e)}")
+            logger.error(f"错误堆栈:\n{traceback.format_exc()}")
+            raise
     
     def create_task(self, task_data: CronTaskCreate, created_by: int) -> CronTask:
         """创建定时任务"""
-        # TODO: 实现创建任务
-        raise HTTPException(status_code=501, detail="功能暂未实现")
+        try:
+            logger.info(f"📝 开始创建任务: {task_data.name}")
+            logger.debug(f"任务数据: {task_data.model_dump()}")
+            
+            # 准备JSON字段
+            parameters_json = json.dumps(task_data.parameters) if task_data.parameters else None
+            environment_vars_json = json.dumps(task_data.environment_vars) if task_data.environment_vars else None
+            notification_emails_json = json.dumps(task_data.notification_emails) if task_data.notification_emails else None
+            tags_json = json.dumps(task_data.tags) if task_data.tags else None
+            
+            logger.debug(f"JSON字段准备完成")
+            
+            # 根据is_active自动设置status
+            # is_active = 0 (未激活) → status = 'disabled' (草稿状态)
+            # is_active = 1 (已激活) → status = 'enabled' (正式启用)
+            initial_status = TaskStatus.ENABLED.value if task_data.is_active else TaskStatus.DISABLED.value
+            logger.debug(f"is_active={task_data.is_active}, 自动设置status={initial_status}")
+            
+            insert_sql = """
+            INSERT INTO cron_tasks (
+                name, description, type, cron_expression, timezone,
+                command, parameters, working_directory, environment_vars,
+                status, is_active, timeout_seconds, max_retries, retry_interval,
+                notify_on_success, notify_on_failure, notification_emails,
+                created_by, updated_by, priority, tags, remark,
+                created_at, updated_at
+            ) VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                NOW(), NOW()
+            )
+            """
+            
+            params = (
+                task_data.name,
+                task_data.description,
+                task_data.type.value,
+                task_data.cron_expression,
+                task_data.timezone,
+                task_data.command,
+                parameters_json,
+                task_data.working_directory,
+                environment_vars_json,
+                initial_status,  # 根据is_active自动设置
+                task_data.is_active,  # 使用前端传入的激活状态
+                task_data.timeout_seconds,
+                task_data.max_retries,
+                task_data.retry_interval,
+                task_data.notify_on_success,
+                task_data.notify_on_failure,
+                notification_emails_json,
+                created_by,
+                created_by,
+                task_data.priority,
+                tags_json,
+                task_data.remark
+            )
+            
+            logger.debug(f"执行SQL插入...")
+            
+            with self.db.get_cursor() as cursor:
+                cursor.execute(insert_sql, params)
+                task_id = cursor.lastrowid
+                # 上下文管理器会自动commit
+            
+            logger.info(f"✅ 任务插入成功: ID={task_id}")
+            
+            # 查询并返回创建的任务
+            created_task = self.get_task_by_id(task_id)
+            if not created_task:
+                raise Exception("任务创建后查询失败")
+            
+            logger.info(f"🎉 任务创建完成: ID={task_id}, Name={created_task.name}")
+            return created_task
+            
+        except Exception as e:
+            logger.error(f"❌ 创建任务失败: {str(e)}")
+            logger.error(f"错误类型: {type(e).__name__}")
+            logger.error(f"错误堆栈:\n{traceback.format_exc()}")
+            # 上下文管理器会自动rollback
+            raise
     
     def update_task(self, task_id: int, task_data: CronTaskUpdate, updated_by: int) -> Optional[CronTask]:
         """更新定时任务"""
@@ -162,13 +290,239 @@ class CronTaskService:
     
     def delete_task(self, task_id: int) -> bool:
         """删除定时任务（软删除）"""
-        # TODO: 实现删除任务
-        raise HTTPException(status_code=501, detail="功能暂未实现")
+        try:
+            logger.info(f"🗑️ 删除任务: task_id={task_id}")
+            
+            # 软删除：设置deleted_at时间戳
+            delete_sql = """
+            UPDATE cron_tasks
+            SET deleted_at = NOW(), updated_at = NOW()
+            WHERE id = %s AND deleted_at IS NULL
+            """
+            
+            with self.db.get_cursor() as cursor:
+                cursor.execute(delete_sql, (task_id,))
+                affected_rows = cursor.rowcount
+            
+            if affected_rows == 0:
+                logger.warning(f"⚠️ 任务不存在或已删除: ID={task_id}")
+                return False
+            
+            logger.info(f"✅ 任务删除成功: ID={task_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ 删除任务失败: {str(e)}")
+            logger.error(f"错误堆栈:\n{traceback.format_exc()}")
+            raise
+    
+    def toggle_activation(self, task_id: int, is_active: bool) -> Optional[CronTask]:
+        """
+        切换任务激活状态
+        - is_active = True: 激活任务，status自动设为enabled
+        - is_active = False: 取消激活，status自动设为disabled（草稿状态）
+        """
+        try:
+            logger.info(f"🔄 切换任务激活状态: task_id={task_id}, is_active={is_active}")
+            
+            # 根据is_active自动设置status
+            new_status = TaskStatus.ENABLED.value if is_active else TaskStatus.DISABLED.value
+            
+            update_sql = """
+            UPDATE cron_tasks
+            SET is_active = %s, status = %s, updated_at = NOW()
+            WHERE id = %s AND deleted_at IS NULL
+            """
+            
+            with self.db.get_cursor() as cursor:
+                cursor.execute(update_sql, (is_active, new_status, task_id))
+                affected_rows = cursor.rowcount
+            
+            if affected_rows == 0:
+                logger.warning(f"⚠️ 任务不存在或已删除: ID={task_id}")
+                return None
+            
+            logger.info(f"✅ 激活状态切换成功: is_active={is_active}, status={new_status}")
+            
+            # 返回更新后的任务
+            return self.get_task_by_id(task_id)
+            
+        except Exception as e:
+            logger.error(f"❌ 切换激活状态失败: {str(e)}")
+            logger.error(f"错误堆栈:\n{traceback.format_exc()}")
+            raise
     
     def toggle_task_status(self, task_id: int, enabled: bool) -> Optional[CronTask]:
-        """切换任务状态"""
-        # TODO: 实现切换任务状态
-        raise HTTPException(status_code=501, detail="功能暂未实现")
+        """
+        切换任务运行状态（仅切换status，不影响is_active）
+        - enabled = True: status设为enabled
+        - enabled = False: status设为disabled
+        注意：只有is_active=1的任务才能被调度执行
+        """
+        try:
+            logger.info(f"🔄 切换任务运行状态: task_id={task_id}, enabled={enabled}")
+            
+            new_status = TaskStatus.ENABLED.value if enabled else TaskStatus.DISABLED.value
+            
+            update_sql = """
+            UPDATE cron_tasks
+            SET status = %s, updated_at = NOW()
+            WHERE id = %s AND deleted_at IS NULL
+            """
+            
+            with self.db.get_cursor() as cursor:
+                cursor.execute(update_sql, (new_status, task_id))
+                affected_rows = cursor.rowcount
+            
+            if affected_rows == 0:
+                logger.warning(f"⚠️ 任务不存在或已删除: ID={task_id}")
+                return None
+            
+            logger.info(f"✅ 运行状态切换成功: status={new_status}")
+            
+            # 返回更新后的任务
+            return self.get_task_by_id(task_id)
+            
+        except Exception as e:
+            logger.error(f"❌ 切换运行状态失败: {str(e)}")
+            logger.error(f"错误堆栈:\n{traceback.format_exc()}")
+            raise
+    
+    def get_deleted_tasks(
+        self,
+        page: int = 1,
+        page_size: int = 20
+    ) -> Dict[str, Any]:
+        """获取已删除的任务列表（回收站）"""
+        try:
+            logger.info(f"🗑️ 获取已删除任务列表: page={page}, page_size={page_size}")
+            
+            offset = (page - 1) * page_size
+            
+            # 查询已删除的任务
+            query_sql = """
+            SELECT * FROM cron_tasks
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+            LIMIT %s OFFSET %s
+            """
+            
+            # 统计总数
+            count_sql = """
+            SELECT COUNT(*) as total FROM cron_tasks
+            WHERE deleted_at IS NOT NULL
+            """
+            
+            with self.db.get_cursor() as cursor:
+                # 获取任务列表
+                cursor.execute(query_sql, (page_size, offset))
+                tasks = cursor.fetchall()
+                
+                # 获取总数
+                cursor.execute(count_sql)
+                total = cursor.fetchone()['total']
+            
+            logger.info(f"✅ 已删除任务查询成功: 共{total}条, 当前页{len(tasks)}条")
+            
+            # 转换为CronTaskOverview格式
+            task_list = []
+            for task in tasks:
+                # 计算成功率
+                success_rate = 0
+                if task['run_count'] > 0:
+                    success_rate = (task['success_count'] / task['run_count']) * 100
+                
+                task_overview = {
+                    'id': task['id'],
+                    'name': task['name'],
+                    'description': task.get('description'),
+                    'type': task['type'],
+                    'cron_expression': task['cron_expression'],
+                    'status': task['status'],
+                    'is_active': bool(task['is_active']),
+                    'run_count': task['run_count'],
+                    'success_count': task['success_count'],
+                    'error_count': task['error_count'],
+                    'success_rate_percent': round(success_rate, 2),
+                    'last_run_at': task.get('last_run_at'),
+                    'last_success_at': task.get('last_success_at'),
+                    'last_error_at': task.get('last_error_at'),
+                    'next_run_at': task.get('next_run_at'),
+                    'priority': task['priority'],
+                    'created_at': task['created_at'],
+                    'deleted_at': task.get('deleted_at')
+                }
+                task_list.append(task_overview)
+            
+            return {
+                "tasks": task_list,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (total + page_size - 1) // page_size
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ 获取已删除任务失败: {str(e)}")
+            logger.error(f"错误堆栈:\n{traceback.format_exc()}")
+            raise
+    
+    def restore_task(self, task_id: int) -> Optional[CronTask]:
+        """恢复已删除的任务"""
+        try:
+            logger.info(f"♻️ 恢复任务: task_id={task_id}")
+            
+            # 恢复任务：清除deleted_at
+            restore_sql = """
+            UPDATE cron_tasks
+            SET deleted_at = NULL, updated_at = NOW()
+            WHERE id = %s AND deleted_at IS NOT NULL
+            """
+            
+            with self.db.get_cursor() as cursor:
+                cursor.execute(restore_sql, (task_id,))
+                affected_rows = cursor.rowcount
+            
+            if affected_rows == 0:
+                logger.warning(f"⚠️ 任务不存在或未被删除: ID={task_id}")
+                return None
+            
+            logger.info(f"✅ 任务恢复成功: ID={task_id}")
+            
+            # 返回恢复后的任务
+            return self.get_task_by_id(task_id)
+            
+        except Exception as e:
+            logger.error(f"❌ 恢复任务失败: {str(e)}")
+            logger.error(f"错误堆栈:\n{traceback.format_exc()}")
+            raise
+    
+    def permanent_delete_task(self, task_id: int) -> bool:
+        """彻底删除任务（物理删除）"""
+        try:
+            logger.info(f"💀 彻底删除任务: task_id={task_id}")
+            
+            # 物理删除：从数据库中移除记录
+            delete_sql = """
+            DELETE FROM cron_tasks
+            WHERE id = %s AND deleted_at IS NOT NULL
+            """
+            
+            with self.db.get_cursor() as cursor:
+                cursor.execute(delete_sql, (task_id,))
+                affected_rows = cursor.rowcount
+            
+            if affected_rows == 0:
+                logger.warning(f"⚠️ 任务不存在或未被软删除: ID={task_id}")
+                return False
+            
+            logger.info(f"✅ 任务彻底删除成功: ID={task_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ 彻底删除任务失败: {str(e)}")
+            logger.error(f"错误堆栈:\n{traceback.format_exc()}")
+            raise
     
     def get_task_logs(
         self, 

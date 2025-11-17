@@ -57,7 +57,7 @@ class CronTaskBase(BaseModel):
 
 class CronTaskCreate(CronTaskBase):
     """创建定时任务模型"""
-    pass
+    is_active: bool = Field(True, description="是否激活")
 
 
 class CronTaskUpdate(BaseModel):
