@@ -285,8 +285,148 @@ class CronTaskService:
     
     def update_task(self, task_id: int, task_data: CronTaskUpdate, updated_by: int) -> Optional[CronTask]:
         """更新定时任务"""
-        # TODO: 实现更新任务
-        raise HTTPException(status_code=501, detail="功能暂未实现")
+        try:
+            logger.info(f"📝 开始更新任务: task_id={task_id}")
+            logger.debug(f"更新数据: {task_data.model_dump(exclude_unset=True)}")
+            
+            # 检查任务是否存在
+            existing_task = self.get_task_by_id(task_id)
+            if not existing_task:
+                logger.warning(f"⚠️ 任务不存在: ID={task_id}")
+                return None
+            
+            # 构建动态更新SQL
+            update_fields = []
+            params = []
+            
+            # 只更新提供的字段
+            if task_data.name is not None:
+                update_fields.append("name = %s")
+                params.append(task_data.name)
+            
+            if task_data.description is not None:
+                update_fields.append("description = %s")
+                params.append(task_data.description)
+            
+            if task_data.type is not None:
+                update_fields.append("type = %s")
+                params.append(task_data.type.value)
+            
+            if task_data.cron_expression is not None:
+                update_fields.append("cron_expression = %s")
+                params.append(task_data.cron_expression)
+            
+            if task_data.timezone is not None:
+                update_fields.append("timezone = %s")
+                params.append(task_data.timezone)
+            
+            if task_data.command is not None:
+                update_fields.append("command = %s")
+                params.append(task_data.command)
+            
+            if task_data.parameters is not None:
+                update_fields.append("parameters = %s")
+                params.append(json.dumps(task_data.parameters))
+            
+            if task_data.working_directory is not None:
+                update_fields.append("working_directory = %s")
+                params.append(task_data.working_directory)
+            
+            if task_data.environment_vars is not None:
+                update_fields.append("environment_vars = %s")
+                params.append(json.dumps(task_data.environment_vars))
+            
+            if task_data.status is not None:
+                update_fields.append("status = %s")
+                params.append(task_data.status.value)
+            
+            if task_data.is_active is not None:
+                update_fields.append("is_active = %s")
+                params.append(task_data.is_active)
+                # 如果更新is_active，同时更新status
+                if task_data.status is None:  # 只在status未被明确设置时自动更新
+                    new_status = TaskStatus.ENABLED.value if task_data.is_active else TaskStatus.DISABLED.value
+                    update_fields.append("status = %s")
+                    params.append(new_status)
+            
+            if task_data.timeout_seconds is not None:
+                update_fields.append("timeout_seconds = %s")
+                params.append(task_data.timeout_seconds)
+            
+            if task_data.max_retries is not None:
+                update_fields.append("max_retries = %s")
+                params.append(task_data.max_retries)
+            
+            if task_data.retry_interval is not None:
+                update_fields.append("retry_interval = %s")
+                params.append(task_data.retry_interval)
+            
+            if task_data.notify_on_success is not None:
+                update_fields.append("notify_on_success = %s")
+                params.append(task_data.notify_on_success)
+            
+            if task_data.notify_on_failure is not None:
+                update_fields.append("notify_on_failure = %s")
+                params.append(task_data.notify_on_failure)
+            
+            if task_data.notification_emails is not None:
+                update_fields.append("notification_emails = %s")
+                params.append(json.dumps(task_data.notification_emails))
+            
+            if task_data.priority is not None:
+                update_fields.append("priority = %s")
+                params.append(task_data.priority)
+            
+            if task_data.tags is not None:
+                update_fields.append("tags = %s")
+                params.append(json.dumps(task_data.tags))
+            
+            if task_data.remark is not None:
+                update_fields.append("remark = %s")
+                params.append(task_data.remark)
+            
+            # 总是更新updated_by和updated_at
+            update_fields.append("updated_by = %s")
+            params.append(updated_by)
+            update_fields.append("updated_at = NOW()")
+            
+            # 如果没有要更新的字段，直接返回原任务
+            if len(update_fields) <= 2:  # 只有updated_by和updated_at
+                logger.info(f"⚠️ 没有需要更新的字段")
+                return existing_task
+            
+            # 构建并执行更新SQL
+            update_sql = f"""
+            UPDATE cron_tasks
+            SET {', '.join(update_fields)}
+            WHERE id = %s AND deleted_at IS NULL
+            """
+            params.append(task_id)
+            
+            logger.debug(f"执行SQL更新...")
+            
+            with self.db.get_cursor() as cursor:
+                cursor.execute(update_sql, params)
+                affected_rows = cursor.rowcount
+            
+            if affected_rows == 0:
+                logger.warning(f"⚠️ 更新失败，任务可能不存在: ID={task_id}")
+                return None
+            
+            logger.info(f"✅ 任务更新成功: ID={task_id}")
+            
+            # 查询并返回更新后的任务
+            updated_task = self.get_task_by_id(task_id)
+            if updated_task:
+                logger.info(f"🎉 任务更新完成: ID={task_id}, Name={updated_task.name}")
+            
+            return updated_task
+            
+        except Exception as e:
+            logger.error(f"❌ 更新任务失败: {str(e)}")
+            logger.error(f"错误类型: {type(e).__name__}")
+            logger.error(f"错误堆栈:\n{traceback.format_exc()}")
+            raise
     
     def delete_task(self, task_id: int) -> bool:
         """删除定时任务（软删除）"""
