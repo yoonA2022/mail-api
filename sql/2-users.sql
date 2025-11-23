@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS `users` (
   `role` VARCHAR(50) NOT NULL DEFAULT 'user' COMMENT '用户角色（admin:管理员 user:普通用户 vip:VIP用户）',
   `permissions` JSON DEFAULT NULL COMMENT '用户权限（JSON格式）',
   
+  -- 套餐信息
+  `plan` VARCHAR(50) NOT NULL DEFAULT 'free' COMMENT '用户套餐（free:免费版 personal:个人版 team:团队版 enterprise:企业版）',
+  `plan_expire_at` DATETIME DEFAULT NULL COMMENT '套餐到期时间',
+  
   -- 登录信息
   `last_login_at` DATETIME DEFAULT NULL COMMENT '最后登录时间',
   `last_login_ip` VARCHAR(45) DEFAULT NULL COMMENT '最后登录IP',
@@ -62,21 +66,21 @@ CREATE TABLE IF NOT EXISTS `users` (
 -- ============================================
 
 -- 管理员账户
-INSERT INTO `users` (`username`, `email`, `password`, `nickname`, `role`, `status`, `is_verified`) 
+INSERT INTO `users` (`username`, `email`, `password`, `nickname`, `avatar`, `role`, `plan`, `status`, `is_verified`) 
 VALUES 
-('admin', 'admin@example.com', '$2b$12$fF/vYSdmKJXKTcKc9GWrVeD4iTNYfA/6snQKSinlsyIZeiilTFV/G', '系统管理员', 'admin', 1, 1);
+('admin', 'admin@example.com', '$2b$12$fF/vYSdmKJXKTcKc9GWrVeD4iTNYfA/6snQKSinlsyIZeiilTFV/G', '系统管理员', '/assets/images/avatars/user.png', 'admin', 'enterprise', 1, 1);
 -- 默认密码: admin123 (请在生产环境中修改)
 
 -- 普通用户示例
-INSERT INTO `users` (`username`, `email`, `password`, `nickname`, `role`, `status`, `is_verified`) 
+INSERT INTO `users` (`username`, `email`, `password`, `nickname`, `avatar`, `role`, `plan`, `status`, `is_verified`) 
 VALUES 
-('user001', 'user001@example.com', '$2b$12$g1RgsbwexsY6FrwU/W5AnOME2TGayRuryAmL56gHiz/9nhx/Fq1rm', '测试用户', 'user', 1, 1);
+('user001', 'user001@example.com', '$2b$12$g1RgsbwexsY6FrwU/W5AnOME2TGayRuryAmL56gHiz/9nhx/Fq1rm', '测试用户', '/assets/images/avatars/user.png', 'user', 'free', 1, 1);
 -- 默认密码: user123
 
 -- VIP用户示例
-INSERT INTO `users` (`username`, `email`, `password`, `nickname`, `role`, `status`, `is_verified`) 
+INSERT INTO `users` (`username`, `email`, `password`, `nickname`, `avatar`, `role`, `plan`, `plan_expire_at`, `status`, `is_verified`) 
 VALUES 
-('vip001', 'vip001@example.com', '$2b$12$AVmPtroMn6v.O7sJ2DN29eO7rFGOueGL/G8fE0l0enlO3enPnLWaa', 'VIP用户', 'vip', 1, 1);
+('vip001', 'vip001@example.com', '$2b$12$AVmPtroMn6v.O7sJ2DN29eO7rFGOueGL/G8fE0l0enlO3enPnLWaa', 'VIP用户', '/assets/images/avatars/user.png', 'vip', 'personal', DATE_ADD(NOW(), INTERVAL 1 YEAR), 1, 1);
 -- 默认密码: vip123
 
 -- ============================================

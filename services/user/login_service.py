@@ -30,7 +30,8 @@ class LoginService:
                 cursor.execute(
                     """
                     SELECT id, username, email, password, nickname, avatar, 
-                           role, status, is_verified, last_login_at, created_at
+                           role, plan, plan_expire_at, status, is_verified, 
+                           last_login_at, created_at
                     FROM users 
                     WHERE email = %s AND deleted_at IS NULL
                     """,
@@ -101,6 +102,8 @@ class LoginService:
                 "nickname": user['nickname'],
                 "avatar": user['avatar'],
                 "role": user['role'],
+                "plan": user.get('plan', 'free'),
+                "plan_expire_at": user['plan_expire_at'].isoformat() if user.get('plan_expire_at') else None,
                 "status": user['status'],
                 "is_verified": user['is_verified'],
                 "last_login_at": user['last_login_at'].isoformat() if user['last_login_at'] else None,
