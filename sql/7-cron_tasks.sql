@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS `cron_tasks` (
   -- 任务基本信息
   `name` VARCHAR(255) NOT NULL COMMENT '任务名称',
   `description` TEXT DEFAULT NULL COMMENT '任务描述',
-  `type` VARCHAR(50) NOT NULL DEFAULT 'custom' COMMENT '任务类型（email_sync:邮件同步 order_sync:订单同步 cleanup:清理任务 backup:备份任务 custom:自定义）',
+  `type` VARCHAR(50) NOT NULL DEFAULT 'custom' COMMENT '任务类型（email_sync:邮件同步 order_sync:订单数据同步 email_to_order:订单自动同步状态 cleanup:清理任务 backup:备份任务 custom:自定义）',
   
   -- Cron配置
   `cron_expression` VARCHAR(100) NOT NULL COMMENT 'Cron表达式（6位格式：秒 分 时 日 月 星期）',
@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS `cron_tasks` (
   `parameters` JSON DEFAULT NULL COMMENT '执行参数（JSON格式）',
   `working_directory` VARCHAR(500) DEFAULT NULL COMMENT '工作目录',
   `environment_vars` JSON DEFAULT NULL COMMENT '环境变量（JSON格式）',
+  `log_file_path` VARCHAR(500) DEFAULT NULL COMMENT '日志文件路径（相对于项目根目录）',
   
   -- 任务状态
   `status` ENUM('enabled', 'disabled', 'running', 'error') NOT NULL DEFAULT 'enabled' COMMENT '任务状态',
@@ -139,7 +140,7 @@ CREATE TABLE IF NOT EXISTS `cron_task_logs` (
 -- 插入演示数据
 -- ============================================
 
--- 邮件同步任务
+-- 邮件同步任务1: 只同步启用自动同步的账户（推荐用于生产环境）
 INSERT INTO `cron_tasks` (
   `name`, 
   `description`, 
@@ -147,6 +148,7 @@ INSERT INTO `cron_tasks` (
   `cron_expression`, 
   `command`, 
   `parameters`, 
+  `log_file_path`,
   `status`, 
   `timeout_seconds`, 
   `notify_on_failure`, 
@@ -155,22 +157,254 @@ INSERT INTO `cron_tasks` (
   `priority`,
   `tags`
 ) VALUES (
-  '邮件同步任务',
-  '定时同步IMAP邮件数据到本地数据库，包括邮件内容、附件等信息',
+  '邮件同步 - 只同步启用的账户',
+  '定时同步IMAP邮件（只同步 auto_sync=1 且 status=1 的账户）',
   'email_sync',
-  '0 */5 * * * *',
-  'python /app/scripts/email_sync.py',
-  '{"batch_size": 100, "max_emails": 1000, "include_attachments": true}',
+  '0 0 */3 * * *',
+  'python services/cron/tasks/email_sync/email_sync_task.py --folder INBOX --batch-size 50 --auto-sync-only',
+  NULL,
+  'services/cron/tasks/email_sync/logs/task.log',
   'disabled',
   600,
   1,
   '["admin@example.com", "tech@example.com"]',
   1,
   3,
-  '["邮件", "同步", "IMAP"]'
+  '["邮件", "同步", "IMAP", "自动"]'
 );
 
--- 订单同步任务
+-- 邮件同步任务2: 同步所有账户（用于全量同步）
+INSERT INTO `cron_tasks` (
+  `name`, 
+  `description`, 
+  `type`, 
+  `cron_expression`, 
+  `command`, 
+  `parameters`, 
+  `log_file_path`,
+  `status`, 
+  `timeout_seconds`, 
+  `notify_on_failure`, 
+  `notification_emails`,
+  `created_by`,
+  `priority`,
+  `tags`
+) VALUES (
+  '邮件同步 - 同步所有账户',
+  '定时同步IMAP邮件（同步所有账户，忽略 auto_sync 状态）',
+  'email_sync',
+  '0 0 */3 * * *',
+  'python services/cron/tasks/email_sync/email_sync_task.py --folder INBOX --batch-size 100 --all',
+  NULL,
+  'services/cron/tasks/email_sync/logs/task.log',
+  'disabled',
+  1200,
+  1,
+  '["admin@example.com"]',
+  1,
+  2,
+  '["邮件", "同步", "IMAP", "全量"]'
+);
+
+-- 邮件同步任务3: 同步指定账户（用于测试或单账户同步）
+INSERT INTO `cron_tasks` (
+  `name`, 
+  `description`, 
+  `type`, 
+  `cron_expression`, 
+  `command`, 
+  `parameters`, 
+  `log_file_path`,
+  `status`, 
+  `timeout_seconds`, 
+  `notify_on_failure`, 
+  `notification_emails`,
+  `created_by`,
+  `priority`,
+  `tags`
+) VALUES (
+  '邮件同步 - 同步指定账户',
+  '定时同步IMAP邮件（只同步账户ID=1，用于测试）',
+  'email_sync',
+  '0 0 */3 * * *',
+  'python services/cron/tasks/email_sync/email_sync_task.py --account-id 1 --folder INBOX --batch-size 50',
+  NULL,
+  'services/cron/tasks/email_sync/logs/task.log',
+  'disabled',
+  300,
+  0,
+  '["tech@example.com"]',
+  1,
+  1,
+  '["邮件", "同步", "IMAP", "测试"]'
+);
+
+-- 订单同步任务 场景 1：使用默认配置（跳过已存在的订单）
+INSERT INTO `cron_tasks` (
+  `name`, 
+  `description`, 
+  `type`, 
+  `cron_expression`, 
+  `command`, 
+  `parameters`,
+  `log_file_path`,
+  `status`, 
+  `timeout_seconds`, 
+  `notify_on_failure`, 
+  `notification_emails`,
+  `created_by`,
+  `priority`,
+  `tags`
+) VALUES (
+  '订单数据同步使用默认配置（跳过已存在的订单）',
+  '每2小时自动筛选订单邮件并保存到订单数据库里',
+  'order_sync',
+  '0 0 */2 * * *',
+  'python services/cron/tasks/order_sync/order_sync_task.py',
+  '{"limit": 100, "skip_existing": true, "auto_sync_only": true}',
+  'services/cron/tasks/order_sync/logs/task.log',
+  'disabled',
+  1800,
+  1,
+  '["admin@example.com", "business@example.com"]',
+  1,
+  2,
+  '["订单", "同步", "REI"]'
+);
+
+-- 订单同步任务 场景 2：强制重新同步所有订单
+INSERT INTO `cron_tasks` (
+  `name`, 
+  `description`, 
+  `type`, 
+  `cron_expression`, 
+  `command`, 
+  `parameters`,
+  `log_file_path`,
+  `status`, 
+  `timeout_seconds`, 
+  `notify_on_failure`, 
+  `notification_emails`,
+  `created_by`,
+  `priority`,
+  `tags`
+) VALUES (
+  '订单数据同步 - 强制重新同步',
+  '强制重新同步所有订单（不跳过已存在的订单），适用于数据修复场景',
+  'order_sync',
+  '0 0 3 * * *',
+  'python services/cron/tasks/order_sync/order_sync_task.py',
+  '{"limit": 200, "skip_existing": false, "auto_sync_only": true}',
+  'services/cron/tasks/order_sync/logs/task.log',
+  'disabled',
+  3600,
+  1,
+  '["admin@example.com", "business@example.com"]',
+  1,
+  3,
+  '["订单", "同步", "REI", "强制同步"]'
+);
+
+-- 订单同步任务 场景 3：同步所有账户（包括未启用自动同步的）
+INSERT INTO `cron_tasks` (
+  `name`, 
+  `description`, 
+  `type`, 
+  `cron_expression`, 
+  `command`, 
+  `parameters`,
+  `log_file_path`,
+  `status`, 
+  `timeout_seconds`, 
+  `notify_on_failure`, 
+  `notification_emails`,
+  `created_by`,
+  `priority`,
+  `tags`
+) VALUES (
+  '订单数据同步 - 全量同步',
+  '同步所有账户的订单（包括未启用自动同步的账户），适用于批量处理场景',
+  'order_sync',
+  '0 0 4 * * 0',
+  'python services/cron/tasks/order_sync/order_sync_task.py',
+  '{"limit": 150, "skip_existing": true, "auto_sync_only": false}',
+  'services/cron/tasks/order_sync/logs/task.log',
+  'disabled',
+  2400,
+  1,
+  '["admin@example.com", "business@example.com"]',
+  1,
+  4,
+  '["订单", "同步", "REI", "全量同步"]'
+);
+
+-- 订单状态更新任务
+INSERT INTO `cron_tasks` (
+  `name`, 
+  `description`, 
+  `type`, 
+  `cron_expression`, 
+  `command`, 
+  `parameters`,
+  `log_file_path`,
+  `status`, 
+  `timeout_seconds`, 
+  `notify_on_failure`, 
+  `notification_emails`,
+  `created_by`,
+  `priority`,
+  `tags`
+) VALUES (
+  '订单状态自动更新',
+  '每2小时从 REI API 获取订单最新状态并更新到数据库，包括订单状态、物流信息等',
+  'order_status_update',
+  '0 0 */2 * * *',
+  'python services/cron/tasks/order_status_update/order_status_update_task.py',
+  '{"limit": 100}',
+  'services/cron/tasks/order_status_update/logs/task.log',
+  'disabled',
+  1800,
+  1,
+  '["admin@example.com", "business@example.com"]',
+  1,
+  5,
+  '["订单", "状态更新", "REI", "API"]'
+);
+
+-- 订单状态更新任务（仅活跃订单）
+INSERT INTO `cron_tasks` (
+  `name`, 
+  `description`, 
+  `type`, 
+  `cron_expression`, 
+  `command`, 
+  `parameters`,
+  `log_file_path`,
+  `status`, 
+  `timeout_seconds`, 
+  `notify_on_failure`, 
+  `notification_emails`,
+  `created_by`,
+  `priority`,
+  `tags`
+) VALUES (
+  '订单状态更新（仅活跃订单）',
+  '每30分钟从 REI API 获取活跃订单的最新状态，跳过已签收（0006）和取消发货（0001）的订单',
+  'order_status_update',
+  '0 */30 * * * *',
+  'python services/cron/tasks/order_status_update_active/order_status_update_active_task.py',
+  '{"limit": 100}',
+  'services/cron/tasks/order_status_update_active/logs/task.log',
+  'disabled',
+  1800,
+  1,
+  '["admin@example.com", "business@example.com"]',
+  1,
+  6,
+  '["订单", "状态更新", "REI", "API", "活跃订单"]'
+);
+
+-- 清理日志任务
 INSERT INTO `cron_tasks` (
   `name`, 
   `description`, 
@@ -186,19 +420,50 @@ INSERT INTO `cron_tasks` (
   `priority`,
   `tags`
 ) VALUES (
-  '订单数据同步',
-  '每2小时同步电商平台订单数据，更新订单状态、物流信息等',
-  'order_sync',
-  '0 0 */2 * * *',
-  'python /app/scripts/order_sync.py',
-  '{"platforms": ["taobao", "tmall", "jd"], "sync_status": true, "sync_logistics": true}',
+  '清理日志任务',
+  '每天凌晨3点清理30天前的任务执行日志和软删除的数据，释放数据库空间',
+  'cleanup',
+  '0 0 3 * * *',
+  'python /app/scripts/cleanup_logs.py',
+  '{"retention_days": 30, "cleanup_soft_deleted": true, "cleanup_logs": true}',
+  'disabled',
+  600,
+  1,
+  '["admin@example.com"]',
+  1,
+  5,
+  '["清理", "日志", "维护"]'
+);
+
+-- 数据库备份任务
+INSERT INTO `cron_tasks` (
+  `name`, 
+  `description`, 
+  `type`, 
+  `cron_expression`, 
+  `command`, 
+  `parameters`, 
+  `status`, 
+  `timeout_seconds`, 
+  `notify_on_failure`, 
+  `notification_emails`,
+  `created_by`,
+  `priority`,
+  `tags`
+) VALUES (
+  '数据库备份',
+  '每天凌晨2点自动备份数据库，保留最近7天的备份文件',
+  'backup',
+  '0 0 2 * * *',
+  'python /app/scripts/backup_database.py',
+  '{"backup_path": "/backups", "retention_days": 7, "compress": true}',
   'disabled',
   1800,
   1,
-  '["admin@example.com", "business@example.com"]',
+  '["admin@example.com", "ops@example.com"]',
   1,
-  2,
-  '["订单", "同步", "电商"]'
+  1,
+  '["备份", "数据库", "运维"]'
 );
 
 -- ============================================

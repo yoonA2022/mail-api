@@ -63,7 +63,7 @@ def get_connection_pool() -> PooledDB:
             cursorclass=DictCursor,
             autocommit=False
         )
-        print(f"✅ 数据库连接池已创建: 最大连接数={20}, 最小空闲={2}")
+        print(f"[OK] 数据库连接池已创建: 最大连接数={20}, 最小空闲={2}")
     
     return _connection_pool
 

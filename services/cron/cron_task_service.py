@@ -158,7 +158,7 @@ class CronTaskService:
             query_sql = """
             SELECT 
                 id, name, description, type, cron_expression, timezone,
-                command, parameters, working_directory, environment_vars,
+                command, parameters, working_directory, environment_vars, log_file_path,
                 status, is_active, run_count, success_count, error_count,
                 last_run_at, last_success_at, last_error_at, next_run_at,
                 timeout_seconds, max_retries, retry_interval,
@@ -219,14 +219,14 @@ class CronTaskService:
             insert_sql = """
             INSERT INTO cron_tasks (
                 name, description, type, cron_expression, timezone,
-                command, parameters, working_directory, environment_vars,
+                command, parameters, working_directory, environment_vars, log_file_path,
                 status, is_active, timeout_seconds, max_retries, retry_interval,
                 notify_on_success, notify_on_failure, notification_emails,
                 created_by, updated_by, priority, tags, remark,
                 created_at, updated_at
             ) VALUES (
                 %s, %s, %s, %s, %s,
-                %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s,
                 %s, %s, %s, %s, %s,
@@ -244,6 +244,7 @@ class CronTaskService:
                 parameters_json,
                 task_data.working_directory,
                 environment_vars_json,
+                task_data.log_file_path,
                 initial_status,  # 根据is_active自动设置
                 task_data.is_active,  # 使用前端传入的激活状态
                 task_data.timeout_seconds,
@@ -335,6 +336,10 @@ class CronTaskService:
             if task_data.environment_vars is not None:
                 update_fields.append("environment_vars = %s")
                 params.append(json.dumps(task_data.environment_vars))
+            
+            if task_data.log_file_path is not None:
+                update_fields.append("log_file_path = %s")
+                params.append(task_data.log_file_path)
             
             if task_data.status is not None:
                 update_fields.append("status = %s")

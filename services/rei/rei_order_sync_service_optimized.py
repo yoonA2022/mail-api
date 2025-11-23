@@ -270,7 +270,8 @@ class ReiOrderSyncServiceOptimized:
     async def refresh_order_details_async(
         account_id: int,
         limit: int = 100,
-        task_id: Optional[str] = None
+        task_id: Optional[str] = None,
+        skip_status_codes: Optional[list] = None
     ) -> Dict[str, Any]:
         """
         异步刷新订单详情（优化版本，支持并发API调用）
@@ -279,6 +280,7 @@ class ReiOrderSyncServiceOptimized:
             account_id: 邮箱账户ID
             limit: 最多处理多少个订单
             task_id: 任务ID（用于进度更新）
+            skip_status_codes: 需要跳过的订单状态代码列表（如 ['0006', '0001']）
         
         Returns:
             刷新结果
@@ -286,6 +288,8 @@ class ReiOrderSyncServiceOptimized:
         try:
             print(f"\n{'='*60}")
             print(f"🔄 [优化版] 开始刷新订单详情 (账户ID: {account_id})")
+            if skip_status_codes:
+                print(f"   跳过状态: {', '.join(skip_status_codes)}")
             print(f"{'='*60}\n")
             
             task_manager = get_task_manager()
@@ -294,8 +298,10 @@ class ReiOrderSyncServiceOptimized:
                 'orders_found': 0,
                 'orders_updated': 0,
                 'orders_failed': 0,
+                'orders_skipped': 0,
                 'updated_orders': [],
-                'failed_orders': []
+                'failed_orders': [],
+                'skipped_orders': []
             }
             
             # 步骤1: 读取订单列表
@@ -333,6 +339,38 @@ class ReiOrderSyncServiceOptimized:
                     try:
                         order_id = order.get('order_id')
                         email_id = order.get('email_id')
+                        
+                        # 检查是否需要跳过此订单（根据状态代码）
+                        if skip_status_codes:
+                            fulfillment_groups = order.get('fulfillment_groups')
+                            if fulfillment_groups:
+                                try:
+                                    # 解析 JSON
+                                    if isinstance(fulfillment_groups, str):
+                                        fg_data = json.loads(fulfillment_groups)
+                                    else:
+                                        fg_data = fulfillment_groups
+                                    
+                                    # 检查所有配送组的状态
+                                    should_skip = False
+                                    for fg in fg_data:
+                                        status = fg.get('status', {})
+                                        summary_status_code = status.get('summaryStatusCode', '')
+                                        
+                                        if summary_status_code in skip_status_codes:
+                                            should_skip = True
+                                            break
+                                    
+                                    if should_skip:
+                                        return {
+                                            'success': True,
+                                            'skipped': True,
+                                            'order_id': order_id,
+                                            'reason': f'订单状态为 {summary_status_code}，已跳过'
+                                        }
+                                except Exception as e:
+                                    # JSON 解析失败，继续处理
+                                    pass
                         
                         # 提取账单地址信息
                         billing_address = order.get('billing_address')
@@ -429,7 +467,15 @@ class ReiOrderSyncServiceOptimized:
             
             # 汇总结果
             for result in process_results:
-                if result.get('success'):
+                if result.get('skipped'):
+                    # 跳过的订单
+                    results['orders_skipped'] += 1
+                    results['skipped_orders'].append({
+                        'order_id': result['order_id'],
+                        'reason': result.get('reason')
+                    })
+                elif result.get('success'):
+                    # 成功更新的订单
                     results['orders_updated'] += 1
                     results['updated_orders'].append({
                         'order_id': result['order_id'],
@@ -437,6 +483,7 @@ class ReiOrderSyncServiceOptimized:
                         'action': result.get('action')
                     })
                 else:
+                    # 失败的订单
                     results['orders_failed'] += 1
                     results['failed_orders'].append({
                         'order_id': result.get('order_id'),
@@ -465,6 +512,8 @@ class ReiOrderSyncServiceOptimized:
             print(f"✅ 刷新完成!")
             print(f"  📋 找到订单: {results['orders_found']}")
             print(f"  🔄 更新订单: {results['orders_updated']}")
+            if results['orders_skipped'] > 0:
+                print(f"  ⏭️  跳过订单: {results['orders_skipped']}")
             print(f"  ❌ 失败订单: {results['orders_failed']}")
             print(f"{'='*60}\n")
             

@@ -20,7 +20,8 @@ async def get_orders(
     page_size: int = Query(10, ge=1, le=10000, description="每页数量（最大10000）"),
     status: Optional[str] = Query(None, description="订单状态筛选"),
     start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
-    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)")
+    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
+    tracking_number: Optional[str] = Query(None, description="物流追踪号")
 ):
     """
     获取REI订单列表
@@ -33,6 +34,7 @@ async def get_orders(
     - status: 订单状态筛选（可选）
     - start_date: 开始日期（可选）
     - end_date: 结束日期（可选）
+    - tracking_number: 物流追踪号（可选）
     
     返回:
     - orders: 订单列表
@@ -66,6 +68,11 @@ async def get_orders(
         if end_date:
             where_conditions.append("order_date <= %s")
             params.append(end_date)
+        
+        # 追踪号搜索（在 fulfillment_groups JSON 中搜索）
+        if tracking_number:
+            where_conditions.append("JSON_SEARCH(fulfillment_groups, 'one', %s, NULL, '$[*].trackingNumber') IS NOT NULL")
+            params.append(tracking_number)
         
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         

@@ -16,6 +16,7 @@ from api.user.login_api import router as login_router
 from api.user.register_api import router as register_router
 from api.user.verification_api import router as verification_router
 from api.cron.cron_task import router as cron_router
+from api.websocket.cron_task import router as cron_ws_router
 from contextlib import asynccontextmanager
 import asyncio
 
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     from services.monitor.monitor_service import MonitorService
     from services.rei.task_manager import get_task_manager
+    from services.cron.scheduler.integration import init_scheduler, shutdown_scheduler
     
     # 启动任务管理器
     print("🔧 启动任务管理器...")
@@ -39,6 +41,15 @@ async def lifespan(app: FastAPI):
     print("🌐 启动邮件监控服务...")
     monitor_task = asyncio.create_task(MonitorService.start())
     
+    # 启动定时任务调度器
+    print("\n" + "=" * 60)
+    print("⏰ 启动定时任务调度器...")
+    try:
+        await init_scheduler(max_workers=20)
+    except Exception as e:
+        print(f"❌ 定时任务调度器启动失败: {e}")
+    print("=" * 60 + "\n")
+    
     yield  # 应用运行中
     
     # 关闭时执行
@@ -47,6 +58,9 @@ async def lifespan(app: FastAPI):
     
     print("⏹️ 停止任务管理器...")
     await task_manager.stop()
+    
+    print("⏹️ 停止定时任务调度器...")
+    await shutdown_scheduler()
     
     # 等待监控任务结束（最多等待5秒）
     try:
@@ -122,6 +136,8 @@ app.include_router(imap_account_router)
 app.include_router(rei_router)
 # 定时任务相关路由
 app.include_router(cron_router)
+# 定时任务 WebSocket 路由
+app.include_router(cron_ws_router)
 
 # 配置静态文件服务
 app.mount("/assets", StaticFiles(directory="templates/assets"), name="assets")

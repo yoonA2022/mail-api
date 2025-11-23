@@ -98,7 +98,7 @@ class ImapAccountService:
                 account = cursor.fetchone()
                 return account
         except Exception as e:
-            print(f"❌ 获取账户信息失败: {e}")
+            print(f"[ERROR] 获取账户信息失败: {e}")
             return None
     
     @staticmethod
@@ -140,7 +140,7 @@ class ImapAccountService:
                 account = cursor.fetchone()
                 return account
         except Exception as e:
-            print(f"❌ 获取账户信息失败: {e}")
+            print(f"[ERROR] 获取账户信息失败: {e}")
             return None
     
     @staticmethod
@@ -183,7 +183,7 @@ class ImapAccountService:
                 accounts = cursor.fetchall()
                 return accounts if accounts else []
         except Exception as e:
-            print(f"❌ 获取启用账户列表失败: {e}")
+            print(f"[ERROR] 获取启用账户列表失败: {e}")
             return []
     
     @staticmethod
@@ -208,7 +208,7 @@ class ImapAccountService:
                 """, (datetime.now(), account_id))
                 return True
         except Exception as e:
-            print(f"❌ 更新同步时间失败: {e}")
+            print(f"[ERROR] 更新同步时间失败: {e}")
             return False
     
     @staticmethod
@@ -233,5 +233,5 @@ class ImapAccountService:
                 """, (status, account_id))
                 return True
         except Exception as e:
-            print(f"❌ 更新账户状态失败: {e}")
+            print(f"[ERROR] 更新账户状态失败: {e}")
             return False

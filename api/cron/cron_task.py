@@ -3,14 +3,16 @@
 """
 import logging
 import traceback
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from config.database import get_db, DatabaseConnection
 from models.cron.cron_task import (
     CronTask, CronTaskCreate, CronTaskUpdate, CronTaskListResponse, 
     CronTaskStatsResponse, TaskStatus
 )
 from services.cron.cron_task_service import CronTaskService
+from services.cron.scheduler.integration import get_scheduler
+from services.cron.scheduler.dynamic_task_manager import DynamicTaskManager
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -229,12 +231,13 @@ async def toggle_task_activation(
 ):
     """
     切换任务激活状态
-    - is_active = True: 激活任务，status自动设为enabled
-    - is_active = False: 取消激活，status自动设为disabled（草稿状态）
+    - is_active = True: 激活任务，status自动设为enabled，并添加到调度器
+    - is_active = False: 取消激活，status自动设为disabled，并从调度器移除
     """
     try:
         logger.info(f"🔄 切换任务激活状态: task_id={task_id}, is_active={is_active}")
         
+        # 1. 更新数据库中的激活状态
         result = service.toggle_activation(task_id, is_active)
         if not result:
             raise HTTPException(
@@ -242,12 +245,41 @@ async def toggle_task_activation(
                 detail="定时任务不存在"
             )
         
-        logger.info(f"✅ 激活状态切换成功: {result.name}")
+        logger.info(f"✅ 数据库激活状态更新成功: {result.name}")
+        
+        # 2. 动态管理调度器中的任务
+        scheduler = get_scheduler()
+        if scheduler:
+            task_manager = DynamicTaskManager(scheduler)
+            
+            if is_active:
+                # 激活：添加到调度器
+                logger.info(f"📥 添加任务到调度器: task_id={task_id}")
+                scheduler_result = await task_manager.activate_task(task_id)
+                
+                if scheduler_result['success']:
+                    logger.info(f"✅ 任务已添加到调度器: {scheduler_result.get('task_name')}")
+                    logger.info(f"⏰ 下次执行时间: {scheduler_result.get('next_run_time')}")
+                else:
+                    logger.warning(f"⚠️ 添加到调度器失败: {scheduler_result.get('message')}")
+            else:
+                # 取消激活：从调度器移除
+                logger.info(f"📤 从调度器移除任务: task_id={task_id}")
+                scheduler_result = await task_manager.deactivate_task(task_id)
+                
+                if scheduler_result['success']:
+                    logger.info(f"✅ 任务已从调度器移除")
+                else:
+                    logger.warning(f"⚠️ 从调度器移除失败: {scheduler_result.get('message')}")
+        else:
+            logger.warning("⚠️ 调度器未初始化，跳过调度器操作")
+        
         return result
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ 切换激活状态失败: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"切换激活状态失败: {str(e)}"
@@ -263,6 +295,8 @@ async def run_cron_task_now(
     立即执行定时任务
     """
     try:
+        logger.info(f"▶️ 请求立即执行任务: task_id={task_id}")
+        
         # 检查任务是否存在
         task = service.get_task_by_id(task_id)
         if not task:
@@ -271,13 +305,49 @@ async def run_cron_task_now(
                 detail="定时任务不存在"
             )
         
-        # TODO: 实现立即执行逻辑
-        # 这里应该调用任务调度器来立即执行任务
+        # 获取调度器实例
+        from services.cron.scheduler.scheduler_manager import CronSchedulerManager
+        scheduler = await CronSchedulerManager.get_instance()
         
-        return {"message": f"任务 '{task.name}' 已加入执行队列"}
+        if not scheduler:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="任务调度器未启动"
+            )
+        
+        # 立即执行任务
+        logger.info(f"🚀 开始执行任务: {task.name}")
+        result = await scheduler.execute_task_now(
+            task_id=task.id,
+            command=task.command,
+            parameters=task.parameters,
+            working_directory=task.working_directory,
+            environment_vars=task.environment_vars,
+            timeout_seconds=task.timeout_seconds,
+            max_retries=task.max_retries,
+            retry_interval=task.retry_interval
+        )
+        
+        if result.get('success'):
+            logger.info(f"✅ 任务执行成功: {task.name}")
+            return {
+                "message": f"任务 '{task.name}' 执行成功",
+                "success": True,
+                "result": result
+            }
+        else:
+            logger.warning(f"⚠️ 任务执行失败: {task.name}, 错误: {result.get('error')}")
+            return {
+                "message": f"任务 '{task.name}' 执行失败: {result.get('error')}",
+                "success": False,
+                "result": result
+            }
+            
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"❌ 执行任务失败: {str(e)}")
+        logger.error(f"错误堆栈:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"执行任务失败: {str(e)}"

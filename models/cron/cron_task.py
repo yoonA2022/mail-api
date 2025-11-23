@@ -11,6 +11,8 @@ class TaskType(str, Enum):
     """任务类型枚举"""
     EMAIL_SYNC = "email_sync"
     ORDER_SYNC = "order_sync"
+    ORDER_STATUS_UPDATE = "order_status_update"
+    EMAIL_TO_ORDER = "email_to_order"
     CLEANUP = "cleanup"
     BACKUP = "backup"
     CUSTOM = "custom"
@@ -44,6 +46,7 @@ class CronTaskBase(BaseModel):
     parameters: Optional[Dict[str, Any]] = Field(None, description="执行参数")
     working_directory: Optional[str] = Field(None, description="工作目录")
     environment_vars: Optional[Dict[str, str]] = Field(None, description="环境变量")
+    log_file_path: Optional[str] = Field(None, description="日志文件路径")
     timeout_seconds: int = Field(300, description="超时时间（秒）")
     max_retries: int = Field(3, description="最大重试次数")
     retry_interval: int = Field(60, description="重试间隔（秒）")
@@ -71,6 +74,7 @@ class CronTaskUpdate(BaseModel):
     parameters: Optional[Dict[str, Any]] = None
     working_directory: Optional[str] = None
     environment_vars: Optional[Dict[str, str]] = None
+    log_file_path: Optional[str] = None
     status: Optional[TaskStatus] = None
     is_active: Optional[bool] = None
     timeout_seconds: Optional[int] = None
