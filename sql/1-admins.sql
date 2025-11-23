@@ -73,21 +73,21 @@ CREATE TABLE IF NOT EXISTS `admins` (
 -- ============================================
 
 -- 超级管理员账户
-INSERT INTO `admins` (`username`, `email`, `password`, `nickname`, `real_name`, `role`, `is_super_admin`, `status`, `is_verified`, `two_factor_enabled`) 
+INSERT INTO `admins` (`username`, `email`, `password`, `nickname`, `avatar`, `real_name`, `role`, `is_super_admin`, `status`, `is_verified`, `two_factor_enabled`) 
 VALUES 
-('superadmin', 'superadmin@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzpLaEiUM2', '超级管理员', '系统管理员', 'super_admin', 1, 1, 1, 1);
+('superadmin', 'superadmin@example.com', '$2b$12$fF/vYSdmKJXKTcKc9GWrVeD4iTNYfA/6snQKSinlsyIZeiilTFV/G', '超级管理员', '/assets/images/avatars/shadcn.png', '系统管理员', 'super_admin', 1, 1, 1, 1);
 -- 默认密码: admin123 (请在生产环境中修改)
 
 -- 普通管理员示例
-INSERT INTO `admins` (`username`, `email`, `password`, `nickname`, `real_name`, `department`, `position`, `role`, `status`, `is_verified`, `created_by`) 
+INSERT INTO `admins` (`username`, `email`, `password`, `nickname`, `avatar`, `real_name`, `department`, `position`, `role`, `status`, `is_verified`, `created_by`) 
 VALUES 
-('admin001', 'admin001@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzpLaEiUM2', '管理员001', '张三', '技术部', '系统管理员', 'admin', 1, 1, 1);
+('admin001', 'admin001@example.com', '$2b$12$fF/vYSdmKJXKTcKc9GWrVeD4iTNYfA/6snQKSinlsyIZeiilTFV/G', '管理员001', '/assets/images/avatars/shadcn.png', '张三', '技术部', '系统管理员', 'admin', 1, 1, 1);
 -- 默认密码: admin123
 
 -- 操作员示例
-INSERT INTO `admins` (`username`, `email`, `password`, `nickname`, `real_name`, `department`, `position`, `role`, `status`, `is_verified`, `created_by`) 
+INSERT INTO `admins` (`username`, `email`, `password`, `nickname`, `avatar`, `real_name`, `department`, `position`, `role`, `status`, `is_verified`, `created_by`) 
 VALUES 
-('operator001', 'operator001@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzpLaEiUM2', '操作员001', '李四', '运营部', '运营专员', 'operator', 1, 1, 1);
+('operator001', 'operator001@example.com', '$2b$12$fF/vYSdmKJXKTcKc9GWrVeD4iTNYfA/6snQKSinlsyIZeiilTFV/G', '操作员001', '/assets/images/avatars/shadcn.png', '李四', '运营部', '运营专员', 'operator', 1, 1, 1);
 -- 默认密码: admin123
 
 -- ============================================
