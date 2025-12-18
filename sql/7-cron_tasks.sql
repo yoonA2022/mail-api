@@ -159,10 +159,10 @@ INSERT INTO `cron_tasks` (
   `tags`
 ) VALUES (
   '邮件同步 - 只同步启用的账户',
-  '定时同步IMAP邮件（只同步 auto_sync=1 且 status=1 的账户）',
+  '定时同步IMAP邮件（只同步 auto_sync=1 且 status=1 的账户，使用账户配置的 folder 和 max_fetch）',
   'email_sync',
   '0 0 */3 * * *',
-  'python services/cron/tasks/email_sync/email_sync_task.py --folder INBOX --batch-size 50 --auto-sync-only',
+  'python services/cron/tasks/email_sync/email_sync_task.py --auto-sync-only',
   NULL,
   'services/cron/tasks/email_sync/logs/task.log',
   'disabled',
@@ -194,10 +194,10 @@ INSERT INTO `cron_tasks` (
   `tags`
 ) VALUES (
   '邮件同步 - 同步所有账户',
-  '定时同步IMAP邮件（同步所有账户，忽略 auto_sync 状态）',
+  '定时同步IMAP邮件（同步所有账户，忽略 auto_sync 状态，使用账户配置的 folder 和 max_fetch）',
   'email_sync',
   '0 0 */3 * * *',
-  'python services/cron/tasks/email_sync/email_sync_task.py --folder INBOX --batch-size 100 --all',
+  'python services/cron/tasks/email_sync/email_sync_task.py --all',
   NULL,
   'services/cron/tasks/email_sync/logs/task.log',
   'disabled',
@@ -229,10 +229,10 @@ INSERT INTO `cron_tasks` (
   `tags`
 ) VALUES (
   '邮件同步 - 同步指定账户',
-  '定时同步IMAP邮件（只同步账户ID=1，用于测试）',
+  '定时同步IMAP邮件（只同步账户ID=1，用于测试，使用账户配置的 folder 和 max_fetch）',
   'email_sync',
   '0 0 */3 * * *',
-  'python services/cron/tasks/email_sync/email_sync_task.py --account-id 1 --folder INBOX --batch-size 50',
+  'python services/cron/tasks/email_sync/email_sync_task.py --account-id 1',
   NULL,
   'services/cron/tasks/email_sync/logs/task.log',
   'disabled',

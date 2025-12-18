@@ -56,13 +56,13 @@ class EmailSyncTask:
         Args:
             **kwargs: 任务参数
                 - account_id: 可选，指定账户ID，如果不提供则同步所有账户
-                - folder: 邮件文件夹，默认 'INBOX'
-                - batch_size: 每批处理的邮件数量，默认 50
+                - folder: 邮件文件夹，默认从账户配置读取，如果未配置则使用 'INBOX'
+                - batch_size: 每批处理的邮件数量，默认从账户配置读取，如果未配置则使用 50
                 - auto_sync_only: 是否只同步启用自动同步的账户，默认 True
         """
         self.account_id = kwargs.get('account_id')
-        self.folder = kwargs.get('folder', 'INBOX')
-        self.batch_size = kwargs.get('batch_size', 50)
+        self.folder_override = kwargs.get('folder')  # 命令行覆盖的文件夹
+        self.batch_size_override = kwargs.get('batch_size')  # 命令行覆盖的批量大小
         self.auto_sync_only = kwargs.get('auto_sync_only', True)
         
         logger.info("=" * 80)
@@ -214,8 +214,14 @@ class EmailSyncTask:
         account_id = account['id']
         account_email = account['email']
         
+        # 从账户配置读取 folder 和 max_fetch，如果命令行有覆盖则使用命令行参数
+        folder = self.folder_override if self.folder_override else account.get('folder', 'INBOX')
+        batch_size = self.batch_size_override if self.batch_size_override else account.get('max_fetch', 50)
+        
         logger.info("-" * 80)
         logger.info(f"📬 开始同步账户: {account_email} (ID: {account_id})")
+        logger.info(f"   文件夹: {folder}")
+        logger.info(f"   批量大小: {batch_size}")
         
         start_time = datetime.now()
         
@@ -223,8 +229,8 @@ class EmailSyncTask:
             # 调用邮件服务同步
             result = MailService.sync_from_imap(
                 account_id=account_id,
-                folder=self.folder,
-                batch_size=self.batch_size
+                folder=folder,
+                batch_size=batch_size
             )
             
             duration = (datetime.now() - start_time).total_seconds()
@@ -233,6 +239,7 @@ class EmailSyncTask:
                 synced_count = result.get('count', 0)
                 logger.info(f"✅ 账户 {account_email} 同步成功")
                 logger.info(f"   同步邮件: {synced_count} 封")
+                logger.info(f"   文件夹: {folder}")
                 logger.info(f"   耗时: {duration:.2f} 秒")
                 
                 # 更新账户的最后同步时间
@@ -242,6 +249,8 @@ class EmailSyncTask:
                     'success': True,
                     'account_id': account_id,
                     'account_email': account_email,
+                    'folder': folder,
+                    'batch_size': batch_size,
                     'synced_count': synced_count,
                     'duration_seconds': duration
                 }

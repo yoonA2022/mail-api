@@ -31,7 +31,7 @@ class ImapAccountService:
                         SELECT 
                             id, email, password, nickname, user_id, platform, 
                             imap_host, imap_port, use_ssl, status, 
-                            auto_sync, sync_interval, last_sync_time,
+                            auto_sync, last_sync_time,
                             folder, max_fetch, remark, created_at, updated_at
                         FROM imap_accounts
                     """
@@ -40,7 +40,7 @@ class ImapAccountService:
                         SELECT 
                             id, email, nickname, user_id, platform, 
                             imap_host, imap_port, use_ssl, status, 
-                            auto_sync, sync_interval, last_sync_time,
+                            auto_sync, last_sync_time,
                             folder, max_fetch, remark, created_at, updated_at
                         FROM imap_accounts
                     """
@@ -79,7 +79,7 @@ class ImapAccountService:
                         SELECT 
                             id, email, password, nickname, platform, 
                             imap_host, imap_port, use_ssl, status, 
-                            auto_sync, sync_interval, last_sync_time,
+                            auto_sync, last_sync_time,
                             folder, max_fetch, remark, created_at, updated_at
                         FROM imap_accounts
                         WHERE id = %s
@@ -89,7 +89,7 @@ class ImapAccountService:
                         SELECT 
                             id, email, nickname, platform, 
                             imap_host, imap_port, use_ssl, status, 
-                            auto_sync, sync_interval, last_sync_time,
+                            auto_sync, last_sync_time,
                             folder, max_fetch, remark, created_at, updated_at
                         FROM imap_accounts
                         WHERE id = %s
@@ -121,7 +121,7 @@ class ImapAccountService:
                         SELECT 
                             id, email, password, nickname, platform, 
                             imap_host, imap_port, use_ssl, status, 
-                            auto_sync, sync_interval, last_sync_time,
+                            auto_sync, last_sync_time,
                             folder, max_fetch, remark, created_at, updated_at
                         FROM imap_accounts
                         WHERE email = %s
@@ -131,7 +131,7 @@ class ImapAccountService:
                         SELECT 
                             id, email, nickname, platform, 
                             imap_host, imap_port, use_ssl, status, 
-                            auto_sync, sync_interval, last_sync_time,
+                            auto_sync, last_sync_time,
                             folder, max_fetch, remark, created_at, updated_at
                         FROM imap_accounts
                         WHERE email = %s
@@ -162,7 +162,7 @@ class ImapAccountService:
                         SELECT 
                             id, email, password, nickname, platform, 
                             imap_host, imap_port, use_ssl, status, 
-                            auto_sync, sync_interval, last_sync_time,
+                            auto_sync, last_sync_time,
                             folder, max_fetch, remark, created_at, updated_at
                         FROM imap_accounts
                         WHERE status = 1
@@ -173,7 +173,7 @@ class ImapAccountService:
                         SELECT 
                             id, email, nickname, platform, 
                             imap_host, imap_port, use_ssl, status, 
-                            auto_sync, sync_interval, last_sync_time,
+                            auto_sync, last_sync_time,
                             folder, max_fetch, remark, created_at, updated_at
                         FROM imap_accounts
                         WHERE status = 1

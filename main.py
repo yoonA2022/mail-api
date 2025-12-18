@@ -15,6 +15,7 @@ from api.rei.rei_api import router as rei_router
 from api.user.login_api import router as login_router
 from api.user.register_api import router as register_router
 from api.user.verification_api import router as verification_router
+from api.user.dashboard.dashboard_api import router as dashboard_router
 from api.admin.login_api import router as admin_login_router
 from api.cron.cron_task import router as cron_router
 from api.websocket.cron_task import router as cron_ws_router
@@ -128,6 +129,7 @@ app.add_middleware(
 app.include_router(login_router)
 app.include_router(register_router)
 app.include_router(verification_router)
+app.include_router(dashboard_router)
 # 管理员相关路由
 app.include_router(admin_login_router)
 # 邮件相关路由

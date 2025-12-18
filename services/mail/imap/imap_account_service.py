@@ -25,7 +25,7 @@ class ImapAccountService:
             if user_id:
                 sql = """
                     SELECT id, email, nickname, user_id, platform, imap_host, imap_port,
-                           use_ssl, status, auto_sync, sync_interval, last_sync_time,
+                           use_ssl, status, auto_sync, last_sync_time,
                            folder, max_fetch, remark, created_at, updated_at
                     FROM imap_accounts
                     WHERE user_id = %s
@@ -35,7 +35,7 @@ class ImapAccountService:
             else:
                 sql = """
                     SELECT id, email, nickname, user_id, platform, imap_host, imap_port,
-                           use_ssl, status, auto_sync, sync_interval, last_sync_time,
+                           use_ssl, status, auto_sync, last_sync_time,
                            folder, max_fetch, remark, created_at, updated_at
                     FROM imap_accounts
                     ORDER BY created_at DESC
@@ -69,7 +69,7 @@ class ImapAccountService:
         with self.db.get_cursor() as cursor:
             sql = """
                 SELECT id, email, nickname, user_id, platform, imap_host, imap_port,
-                       use_ssl, status, auto_sync, sync_interval, last_sync_time,
+                       use_ssl, status, auto_sync, last_sync_time,
                        folder, max_fetch, remark, created_at, updated_at
                 FROM imap_accounts
                 WHERE id = %s
@@ -97,35 +97,48 @@ class ImapAccountService:
         Returns:
             创建的账户信息
         """
-        with self.db.get_cursor() as cursor:
-            sql = """
-                INSERT INTO imap_accounts 
-                (email, password, nickname, user_id, platform, imap_host, imap_port,
-                 use_ssl, status, auto_sync, sync_interval, folder, max_fetch, remark)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(sql, (
-                account_data.email,
-                account_data.password,
-                account_data.nickname,
-                account_data.user_id,
-                account_data.platform,
-                account_data.imap_host,
-                account_data.imap_port,
-                account_data.use_ssl,
-                account_data.status,
-                account_data.auto_sync,
-                account_data.sync_interval,
-                account_data.folder,
-                account_data.max_fetch,
-                account_data.remark
-            ))
+        try:
+            # 先插入数据
+            with self.db.get_cursor() as cursor:
+                sql = """
+                    INSERT INTO imap_accounts 
+                    (email, password, nickname, user_id, platform, imap_host, imap_port,
+                     use_ssl, status, auto_sync, folder, max_fetch, remark)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                
+                values = (
+                    account_data.email,
+                    account_data.password,
+                    account_data.nickname,
+                    account_data.user_id,
+                    account_data.platform,
+                    account_data.imap_host,
+                    account_data.imap_port,
+                    account_data.use_ssl,
+                    account_data.status,
+                    account_data.auto_sync,
+                    account_data.folder,
+                    account_data.max_fetch,
+                    account_data.remark
+                )
+                
+                cursor.execute(sql, values)
+                
+                # 获取插入的ID
+                account_id = cursor.lastrowid
             
-            # 获取插入的ID
-            account_id = cursor.lastrowid
+            # with 块结束，事务已提交，现在可以查询了
+            result = self.get_account_by_id(account_id)
             
-            # 返回创建的账户
-            return self.get_account_by_id(account_id)
+            return result
+                
+        except Exception as e:
+            # 处理唯一键冲突错误
+            if "Duplicate entry" in str(e) and "uk_email" in str(e):
+                raise ValueError(f"邮箱地址 {account_data.email} 已存在，请使用其他邮箱")
+            
+            raise
     
     def update_account(self, account_id: int, account_data: ImapAccountUpdate) -> Optional[ImapAccountResponse]:
         """
@@ -174,10 +187,6 @@ class ImapAccountService:
         if account_data.auto_sync is not None:
             update_fields.append("auto_sync = %s")
             update_values.append(account_data.auto_sync)
-        
-        if account_data.sync_interval is not None:
-            update_fields.append("sync_interval = %s")
-            update_values.append(account_data.sync_interval)
         
         if account_data.folder is not None:
             update_fields.append("folder = %s")

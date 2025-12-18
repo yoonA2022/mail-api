@@ -52,8 +52,13 @@ class AuthUtils:
             payload = jwt.decode(token, AuthUtils.SECRET_KEY, algorithms=[AuthUtils.ALGORITHM])
             return payload
         except jwt.ExpiredSignatureError:
+            print(f"[Auth] Token 已过期")
             return None
-        except jwt.JWTError:
+        except jwt.DecodeError:
+            print(f"[Auth] Token 解码失败: 格式错误")
+            return None
+        except Exception as e:
+            print(f"[Auth] Token 验证异常: {str(e)}")
             return None
     
     @staticmethod

@@ -21,7 +21,6 @@ CREATE TABLE IF NOT EXISTS `imap_accounts` (
   -- 状态和设置
   `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '账户状态（0:禁用 1:启用）',
   `auto_sync` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否自动同步（0:否 1:是）',
-  `sync_interval` INT DEFAULT 300 COMMENT '同步间隔（秒）',
   `last_sync_time` DATETIME DEFAULT NULL COMMENT '上次同步时间',
   
   -- 额外配置
